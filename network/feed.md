@@ -1,42 +1,36 @@
 ---
 title: "Feed the network"
-description: "One line in a feeder config; never exclusive."
+description: "One line in a feeder config."
 ---
 
-Feeding takes one line in the config of a receiver you may already
-run, and it is never exclusive: our own stations feed adsb.lol,
-adsb.fi and airplanes.live alongside.
+Feeding is one line in a receiver you may already run. It is not
+exclusive.
 
-## If you already feed other networks
-
-Add one connector line to your feeder config:
+## Already feeding
 
 ```
 adsb,feed.flightportrait.com,30004,beast_reduce_plus_out,uuid=YOUR-UUID
 ```
 
-Generate a UUID with `cat /proc/sys/kernel/random/uuid` and keep it:
-it is your station's identity and your private key to its status page.
+Generate a UUID with `cat /proc/sys/kernel/random/uuid` and keep it.
+It is the station identity and the key to its status page. We store
+a hash, not the UUID.
 
-## If you are starting from zero
+## Starting from zero
 
-A receiver is a US$40 RTL-SDR dongle with a 1090 MHz antenna and any
-computer that runs Docker, a Raspberry Pi included.
-[The join page](https://flightportrait.com/network/join.html)
-generates your station identity in the browser and watches until your
-antenna is heard, and its setup brief can be handed to whatever gets
-your receiver configured, a person or an agent.
+A receiver is an RTL-SDR dongle with a 1090 MHz antenna (about
+US$40) and a computer that runs Docker, including a Raspberry Pi 2
+through 5.
 
-## What feeders get
+[The join page](https://flightportrait.com/network/?mode=join)
+issues the UUID and watches until the station is heard.
 
-The API, a private station status page (knowing your full UUID is the
-key; we store only its hash), and a place on the map. Station
-locations are shown rounded to about 11 km, computed from coverage,
-never from an address. Feeder IPs are not stored.
+## What is public
 
-## The terms, in short
+The roster shows a generated id, online status, and a location
+rounded to about 11 km from coverage. Not an address. Feeder IPs
+are not stored.
 
-Your data stays yours; you license the network to aggregate and
-republish it under ODbL. Stop feeding whenever you like. The full
-text is at
-[flightportrait.com/network/terms](https://flightportrait.com/network/terms).
+[Feeder terms](https://flightportrait.com/network/terms): you keep
+your data; the aggregate is published under ODbL. Stop whenever you
+like.

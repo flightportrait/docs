@@ -27,7 +27,6 @@ the same open firmware. [Build your own frame](/diy/byod).
 
 ## The license
 
-The firmware and the network stack are Apache-2.0. The one thing that
-stays ours is the art: the renderer that composes the daily poster is
-what you are buying when you buy a frame. Everything the frame needs
-to exist without us is public.
+Firmware is Apache-2.0. The network map is Apache-2.0. Data from
+the network API is ODbL. The poster art stays ours. Everything the
+frame needs to exist without us is public.

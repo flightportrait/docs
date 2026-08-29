@@ -1,37 +1,23 @@
 ---
-title: "An open flight tracker"
-description: "A live tracker built on community receivers and openly licensed data."
+title: "The network"
+description: "Map, API, and how to feed."
 ---
 
-The FlightPortrait Network is an open source alternative to
-FlightRadar24: a live flight tracker built on community receivers and
-openly licensed data. Everything is in
-[one repository](https://github.com/flightportrait/network), from the
-antenna's Beast port to the map in your browser.
+FlightPortrait is an e-ink frame that draws the aircraft that flew
+over your home.
 
-Our instance runs at
-[flightportrait.com/network](https://flightportrait.com/network). It
-is the biggest instance, not the only possible one.
+We're building a network of feeders, open to anyone with an antenna.
+The aircraft on the map, and on the wall, are what those receivers
+heard.
 
-## What it does
+- Map: [flightportrait.com/network](https://flightportrait.com/network)
+- API: [data.flightportrait.com](https://data.flightportrait.com)
+  (no API key). [Reference](/api/reference)
+- Feed: [one line in a feeder config](/network/feed)
+- Source: [github.com/flightportrait/network](https://github.com/flightportrait/network)
 
-* A live map: aircraft as top-down silhouettes, sized by type, with
-  trails, search, and callsign labels.
-* A detail card per flight: photo, type spelled out, route with
-  cities, altitude, speed, heading.
-* A page per airframe: its observed flight log going back a year,
-  rotations, quiet periods stated as quiet periods.
-* Airline pages: fleets, destinations, route frequencies, derived
-  departure boards.
-* An open API serving all of it. Rate-limited, no key, no account.
+Live positions come from receivers on the network. Routes and
+airframe logs come from openly licensed traces. A gap means it was
+not heard.
 
-## Observation, not inference
-
-Everything shown is observation. Positions come from receivers, routes
-and schedules are derived from what aircraft actually flew, and a gap
-means the network did not hear it. There is no commercial schedule
-feed and no inference dressed up as fact.
-
-## The licenses
-
-Apache-2.0 for the code, ODbL for the data, both irrevocable.
+[Licenses and privacy](/network/data).

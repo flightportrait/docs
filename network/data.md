@@ -1,41 +1,35 @@
 ---
 title: "Data and licensing"
-description: "What the network serves, under which licenses, with what privacy floor."
+description: "What is served, under which licenses."
 ---
-
-## The licenses
 
 | What | License |
 | --- | --- |
-| The network stack, API, and web tracker | Apache-2.0 |
-| The firmware and device protocol | Apache-2.0 |
-| Data served by the network | ODbL 1.0 |
+| Map and feeder docs | Apache-2.0 ([flightportrait/network](https://github.com/flightportrait/network)) |
+| Firmware and device protocol | Apache-2.0 ([flightportrait/frame](https://github.com/flightportrait/frame)) |
+| Data from the API | ODbL 1.0 |
 | Basemap tiles | OpenFreemap |
 | Airports | OurAirports, public domain |
-| Aircraft photos | planespotters.net, credited per image |
+| Aircraft photos | planespotters.net, in the browser, credited per image |
 
-Both licenses are irrevocable.
+Airline marks on the map belong to their owners.
 
-## What the network serves
+## What the API serves
 
-* Live positions, trails, and per-station presence from network
+* Live positions, trails, and station presence from network
   receivers.
-* Derived routes: callsign to origin and destination, computed
-  nightly from openly licensed trace archives and published back to
-  the commons.
-* Per-airframe flight logs: the legs the open trace archives show an
-  aircraft flying, going back about a year. Observation only. A quiet
-  day means the archives did not see it, nothing more.
+* Derived routes (callsign to origin and destination) from openly
+  licensed trace archives, published back under ODbL.
+* Per-airframe flight logs from those archives, about a year.
+  A quiet day means the archives did not see it.
 
 ## Attribution
 
-Data (c) FlightPortrait network feeders, ODbL 1.0. If you build on
-the API, that line and a link satisfy the license.
+Data (c) FlightPortrait network feeders, ODbL 1.0. That line and a
+link satisfy the license.
 
-## The privacy floor
+## Stations
 
-Station locations are published rounded to about 11 km, derived from
-coverage, never from an address. Feeder IP addresses are not stored.
-A station's full UUID is a capability held by its owner; the server
-stores only a hash. These are not settings; they do not vary by
-deployment.
+Locations are rounded to about 11 km, from coverage. IPs are not
+stored. The full UUID is held by the feeder; the server stores a
+hash.

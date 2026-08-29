@@ -37,7 +37,6 @@
         "pages": [
           "network/overview",
           "network/feed",
-          "network/self-host",
           "network/data"
         ]
       },
@@ -69,5 +68,11 @@
       "github": "https://github.com/flightportrait",
       "website": "https://flightportrait.com"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/network/self-host",
+      "destination": "/network/overview"
+    }
+  ]
 }

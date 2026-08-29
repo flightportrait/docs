@@ -1,14 +1,16 @@
 # Contributing
 
-These docs are the source of truth for docs.flightportrait.com,
-rendered from this repository. Fixes and clarifications are welcome
-as pull requests.
+These pages are the source for docs.flightportrait.com. Fixes
+welcome as pull requests.
 
-- Pages are plain Markdown; the nav lives in `docs.json`.
-- Keep claims factual and verifiable against the code they document
-  (flightportrait/frame, flightportrait/network).
-- House style: plain sentences, exact numbers, no exclamation marks,
-  no em dashes.
+- Markdown pages; nav in `docs.json`.
+- Check claims against the code: firmware in
+  [flightportrait/frame](https://github.com/flightportrait/frame),
+  map and feed in
+  [flightportrait/network](https://github.com/flightportrait/network),
+  API at
+  [data.flightportrait.com/docs](https://data.flightportrait.com/docs).
+- Plain sentences, exact numbers, no exclamation marks, no em
+  dashes.
 
-By contributing you agree that your contributions are licensed under
-Apache-2.0.
+Contributions are licensed under Apache-2.0.
