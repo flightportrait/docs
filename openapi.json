@@ -1,0 +1,1474 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FlightPortrait network API",
+    "description": "No API key. Rate limits are per IP over a 600 second window. 429 means wait.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://data.flightportrait.com"
+    }
+  ],
+  "paths": {
+    "/v1/now": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Counts",
+        "description": "Aircraft and station counts from the live snapshot. 503 if the snapshot is older than 60 seconds.",
+        "operationId": "now",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "aircraft_count": 7,
+                  "aircraft_with_pos": 5,
+                  "station_count": 1,
+                  "generated_at": 1787924061.0
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds."
+          }
+        }
+      }
+    },
+    "/v1/aircraft": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Aircraft",
+        "description": "Aircraft the network hears right now. Fields: hex, flight, t, r, lat, lon, alt_baro, gs, track, category, squawk, seen, seen_pos. 503 if the snapshot is older than 60 seconds.",
+        "operationId": "aircraft",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "now": 1787924061.0,
+                  "aircraft": [
+                    {
+                      "hex": "76cd06",
+                      "flight": "SIA123",
+                      "t": "A359",
+                      "r": "9V-SHF",
+                      "lat": 1.5,
+                      "lon": 103.8,
+                      "alt_baro": 6325,
+                      "gs": 285.9,
+                      "track": 85.4,
+                      "category": "A5",
+                      "squawk": "2136",
+                      "seen": 0.2,
+                      "seen_pos": 1.1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds."
+          }
+        }
+      }
+    },
+    "/v1/trace/{hex_id}": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Trace",
+        "description": "Recent positions for one aircraft, oldest first. Each point is [t, lat, lon, alt_baro, track]. Held in memory, about 30 minutes. 404 if none.",
+        "operationId": "trace",
+        "parameters": [
+          {
+            "name": "hex_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO 24-bit address, hex. Case-insensitive.",
+              "title": "Hex Id"
+            },
+            "description": "ICAO 24-bit address, hex. Case-insensitive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "hex": "76cd06",
+                  "points": [
+                    [
+                      1787924000.0,
+                      1.48,
+                      103.7,
+                      6000,
+                      84.0
+                    ],
+                    [
+                      1787924061.0,
+                      1.5,
+                      103.8,
+                      6325,
+                      85.4
+                    ]
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/route/{callsign}": {
+      "get": {
+        "tags": [
+          "History"
+        ],
+        "summary": "Route",
+        "description": "Origin and destination for a callsign, from derived traces. 404 if unknown.",
+        "operationId": "route",
+        "parameters": [
+          {
+            "name": "callsign",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Callsign or flight ident.",
+              "title": "Callsign"
+            },
+            "description": "Callsign or flight ident."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "callsign": "SIA123",
+                  "route": [
+                    "SIN",
+                    "LHR"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/airframe/{hex_id}": {
+      "get": {
+        "tags": [
+          "History"
+        ],
+        "summary": "Airframe log",
+        "description": "Observed legs for one aircraft, newest first. window is the number of days covered. Observation, not a published schedule. 404 if none.",
+        "operationId": "airframe",
+        "parameters": [
+          {
+            "name": "hex_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO 24-bit address, hex. Case-insensitive.",
+              "title": "Hex Id"
+            },
+            "description": "ICAO 24-bit address, hex. Case-insensitive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "hex": "76cd06",
+                  "reg": "9V-SHF",
+                  "type": "A359",
+                  "window": "60",
+                  "legs": [
+                    {
+                      "date": "2026-08-27",
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "dep_ts": 1787800000,
+                      "arr_ts": 1787845000,
+                      "max_alt": 41000,
+                      "callsign": "SQ322"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/airport/{code}": {
+      "get": {
+        "tags": [
+          "History"
+        ],
+        "summary": "Airport",
+        "description": "Observed totals and busiest routes, plus an inferred departures board in local time. IATA or ICAO code. Circuits excluded. 404 if none.",
+        "operationId": "airport",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "IATA or ICAO airport code.",
+              "title": "Code"
+            },
+            "description": "IATA or ICAO airport code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": "SIN",
+                  "departures": 120,
+                  "destinations": 40,
+                  "tails": 80,
+                  "days_observed": 60,
+                  "routes": [
+                    {
+                      "dst": "LHR",
+                      "flights": 14,
+                      "days": 7
+                    }
+                  ],
+                  "board": [
+                    {
+                      "flight": "SQ322",
+                      "dst": "LHR",
+                      "dep": "09:00",
+                      "arr": "15:10",
+                      "type": "A359",
+                      "flights": 12,
+                      "source": "adsb"
+                    }
+                  ],
+                  "airlines": [
+                    {
+                      "icao": "SIA",
+                      "flights": 90
+                    }
+                  ],
+                  "times": "local",
+                  "window": "60"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Invalid path."
+          }
+        }
+      }
+    },
+    "/v1/flight/{callsign}": {
+      "get": {
+        "tags": [
+          "History"
+        ],
+        "summary": "Flight",
+        "description": "Observed legs, airframes, and recent operations for one flight number. Typical local times when known. 404 if none.",
+        "operationId": "flight",
+        "parameters": [
+          {
+            "name": "callsign",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Callsign or flight ident.",
+              "title": "Callsign"
+            },
+            "description": "Callsign or flight ident."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "callsign": "SQ322",
+                  "legs": [
+                    {
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "flights": 12,
+                      "days": 7,
+                      "last": "2026-08-27",
+                      "dep": "09:00",
+                      "arr": "15:10",
+                      "type": "A359"
+                    }
+                  ],
+                  "aircraft": [
+                    {
+                      "hex": "76cd06",
+                      "reg": "9V-SHF",
+                      "type": "A359",
+                      "flights": 8
+                    }
+                  ],
+                  "recent": [
+                    {
+                      "date": "2026-08-27",
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "dep_ts": 1787800000,
+                      "arr_ts": 1787845000
+                    }
+                  ],
+                  "window": "60"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Invalid path."
+          }
+        }
+      }
+    },
+    "/v2/point/{lat}/{lon}/{radius}": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Point",
+        "description": "Aircraft within radius nautical miles of a point. Radius is capped at 250. Response is the common v2 envelope (ac, now, total). Fields inside ac come from the aggregator, not the /v1/aircraft allowlist. 502 if the aggregator is down.",
+        "operationId": "point",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "description": "Latitude, degrees.",
+              "title": "Lat"
+            },
+            "description": "Latitude, degrees."
+          },
+          {
+            "name": "lon",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "description": "Longitude, degrees.",
+              "title": "Lon"
+            },
+            "description": "Longitude, degrees."
+          },
+          {
+            "name": "radius",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "description": "Radius in nautical miles. Capped at 250.",
+              "title": "Radius"
+            },
+            "description": "Radius in nautical miles. Capped at 250."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "ac": [
+                    {
+                      "hex": "76cd06",
+                      "flight": "SIA123",
+                      "lat": 1.5,
+                      "lon": 103.8
+                    }
+                  ],
+                  "msg": "No error",
+                  "now": 1787924061.0,
+                  "total": 1,
+                  "ctime": 1787924061.0,
+                  "ptime": 12.4
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "422": {
+            "description": "Invalid path."
+          },
+          "502": {
+            "description": "Aggregator unavailable."
+          }
+        }
+      }
+    },
+    "/v1/stations": {
+      "get": {
+        "tags": [
+          "Stations"
+        ],
+        "summary": "Roster",
+        "description": "Public feeder list. Locations rounded to about 11 km. IPs are not stored.",
+        "operationId": "stations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "stations": [
+                    {
+                      "id": "fp-a1b2c3d4e5",
+                      "coarse_lat": 1.4,
+                      "coarse_lon": 103.8,
+                      "first_seen": "2026-08-01T00:00:00+00:00",
+                      "last_seen": "2026-08-29T12:00:00+00:00",
+                      "online": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          }
+        }
+      }
+    },
+    "/v1/stations/{station_uuid}": {
+      "get": {
+        "tags": [
+          "Stations"
+        ],
+        "summary": "Station",
+        "description": "Status for one feeder. The full UUID is the key; the server stores a hash. Unknown and malformed UUIDs both return 404.",
+        "operationId": "station",
+        "parameters": [
+          {
+            "name": "station_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Full feeder UUID. The server stores a hash, not the UUID.",
+              "title": "Station Uuid"
+            },
+            "description": "Full feeder UUID. The server stores a hash, not the UUID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fp-a1b2c3d4e5",
+                  "online": true,
+                  "messages_per_s": 0.426,
+                  "positions_per_s": 0.109,
+                  "kbit_s": 0.09,
+                  "rtt_ms": 16,
+                  "positions_total": 204,
+                  "aircraft_seen": 3,
+                  "first_seen": "2026-08-01T00:00:00+00:00",
+                  "last_seen": "2026-08-29T12:00:00+00:00",
+                  "recent_sessions": [
+                    {
+                      "started_at": "2026-08-29T00:00:00+00:00",
+                      "peak_messages_per_s": 0.5,
+                      "positions_total": 204
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/aircraft/{hex_id}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Aircraft lookup",
+        "description": "Registration, type, and operator for one ICAO hex.",
+        "operationId": "ref_aircraft",
+        "parameters": [
+          {
+            "name": "hex_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO 24-bit address, hex. Case-insensitive.",
+              "title": "Hex Id"
+            },
+            "description": "ICAO 24-bit address, hex. Case-insensitive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "hex": "76cd06",
+                  "registration": "9V-SHF",
+                  "type": "A359",
+                  "operator": "Singapore Airlines",
+                  "operator_icao": "SIA",
+                  "year": 2019,
+                  "source": "tar1090",
+                  "type_name": "Airbus A350-900",
+                  "category": "wide"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airlines",
+        "description": "Airlines in the reference tables, with route and country counts.",
+        "operationId": "ref_airlines",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline",
+        "description": "One airline.",
+        "operationId": "ref_airline",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "iata": "SQ",
+                  "name": "Singapore Airlines",
+                  "palette": [
+                    "#1D4886",
+                    "#FCB130"
+                  ],
+                  "alliances": [],
+                  "n_routes": 40
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/alliances": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Alliances",
+        "description": "Global alliances and how much of each we have observed. Member counts are official. Route, flight, and airframe counts are observed lower bounds.",
+        "operationId": "ref_alliances",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          }
+        }
+      }
+    },
+    "/v1/refdata/alliances/{slug}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Alliance",
+        "description": "One alliance: memberships and observed coverage.",
+        "operationId": "ref_alliance",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Alliance slug, for example star-alliance.",
+              "title": "Slug"
+            },
+            "description": "Alliance slug, for example star-alliance."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/alliances/{slug}/routes": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Alliance routes",
+        "description": "Observed legs across current member brands.",
+        "operationId": "ref_alliance_routes",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Alliance slug, for example star-alliance.",
+              "title": "Slug"
+            },
+            "description": "Alliance slug, for example star-alliance."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/routes": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline routes",
+        "description": "Observed legs and the airports they touch. Prefers flight-log frequencies. Falls back to route chains if the log has no rows.",
+        "operationId": "ref_airline_routes",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/leg/{o}/{d}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline leg",
+        "description": "Airframes seen on one undirected airport pair, most frequent first. Endpoints can be in either order.",
+        "operationId": "ref_airline_leg",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          },
+          {
+            "name": "o",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airport code. The pair is undirected; order does not matter.",
+              "title": "O"
+            },
+            "description": "Airport code. The pair is undirected; order does not matter."
+          },
+          {
+            "name": "d",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airport code. The pair is undirected; order does not matter.",
+              "title": "D"
+            },
+            "description": "Airport code. The pair is undirected; order does not matter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/schedule/{o}/{d}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline schedule",
+        "description": "Inferred timetable for a route, both directions. Times are local at origin. Observation, not a published schedule.",
+        "operationId": "ref_airline_schedule",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          },
+          {
+            "name": "o",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airport code. The pair is undirected; order does not matter.",
+              "title": "O"
+            },
+            "description": "Airport code. The pair is undirected; order does not matter."
+          },
+          {
+            "name": "d",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airport code. The pair is undirected; order does not matter.",
+              "title": "D"
+            },
+            "description": "Airport code. The pair is undirected; order does not matter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/countries": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline countries",
+        "description": "Countries this airline's observed routes touch.",
+        "operationId": "ref_airline_countries",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/fleet/{designator}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline fleet type",
+        "description": "Airframes of one type in an airline's observed fleet.",
+        "operationId": "ref_airline_fleet_type",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          },
+          {
+            "name": "designator",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO type designator, for example A359.",
+              "title": "Designator"
+            },
+            "description": "ICAO type designator, for example A359."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airlines/{icao}/fleet": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline fleet",
+        "description": "Observed fleet grouped by type. Not a published fleet list.",
+        "operationId": "ref_airline_fleet",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/types/{designator}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Type",
+        "description": "ICAO type designator to name.",
+        "operationId": "ref_type",
+        "parameters": [
+          {
+            "name": "designator",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO type designator, for example A359.",
+              "title": "Designator"
+            },
+            "description": "ICAO type designator, for example A359."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "designator": "A359",
+                  "name": "Airbus A350-900",
+                  "category": "wide"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refdata/airports/{ident}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airport lookup",
+        "description": "One airport from the reference tables.",
+        "operationId": "ref_airport",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "IATA or ICAO airport code.",
+              "title": "Ident"
+            },
+            "description": "IATA or ICAO airport code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "ident": "WSSS",
+                  "name": "Singapore Changi",
+                  "kind": "large_airport",
+                  "lat": 1.35019,
+                  "lon": 103.994,
+                  "iso_country": "SG",
+                  "municipality": "Singapore",
+                  "iata": "SIN"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Per IP, 600 second window."
+          },
+          "404": {
+            "description": "Not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Health",
+        "description": "Liveness. Does not check the aggregator.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          }
+        },
+        "x-hidden": true
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Index",
+        "description": "Name, docs, source, terms, attribution, and the feed address.",
+        "operationId": "index",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "FlightPortrait network API",
+                  "docs": "https://docs.flightportrait.com/api/reference",
+                  "openapi": "/docs",
+                  "source": "https://github.com/flightportrait/network",
+                  "terms": "https://flightportrait.com/network/terms",
+                  "attribution": "Data (c) FlightPortrait network feeders, ODbL 1.0",
+                  "feed": "feed.flightportrait.com:30004 (beast_reduce_plus_out)"
+                }
+              }
+            }
+          }
+        },
+        "x-hidden": true
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Live",
+      "description": "What the network hears now."
+    },
+    {
+      "name": "History",
+      "description": "Observed legs and routes."
+    },
+    {
+      "name": "Stations",
+      "description": "Feeder roster."
+    },
+    {
+      "name": "Reference",
+      "description": "Aircraft, airlines, airports, types."
+    },
+    {
+      "name": "Meta",
+      "description": "Index and health."
+    }
+  ]
+}
