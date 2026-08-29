@@ -1730,7 +1730,7 @@
                               "string",
                               "null"
                             ],
-                            "description": "Founder-set display label."
+                            "description": "Operator-set display label."
                           },
                           "coarse_lat": {
                             "type": [
