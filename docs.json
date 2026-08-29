@@ -1,0 +1,73 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "FlightPortrait",
+  "description": "Documentation for the FlightPortrait frame and network.",
+  "colors": {
+    "primary": "#B8402E",
+    "light": "#D97462",
+    "dark": "#9A3526"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://flightportrait.com"
+  },
+  "appearance": {
+    "default": "light"
+  },
+  "background": {
+    "color": {
+      "light": "#F5F1E6"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "FlightPortrait",
+        "pages": ["introduction", "how-it-works"]
+      },
+      {
+        "group": "Yours to run",
+        "pages": ["diy/overview", "diy/firmware", "diy/byos", "diy/byod"]
+      },
+      {
+        "group": "The network",
+        "pages": [
+          "network/overview",
+          "network/feed",
+          "network/self-host",
+          "network/data"
+        ]
+      },
+      {
+        "group": "API",
+        "pages": ["api/reference"]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Live map",
+        "href": "https://flightportrait.com/network"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/flightportrait"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "flightportrait.com",
+      "href": "https://flightportrait.com"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/flightportrait",
+      "website": "https://flightportrait.com"
+    }
+  }
+}
