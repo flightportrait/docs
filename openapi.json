@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "FlightPortrait network API",
-    "description": "No API key. Rate limits are per IP over a 600 second window. 429 means wait.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
+    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** Everything here is observation, never a published schedule or an official registry. Gaps mean the network's sources did not hear it, nothing more. History responses carry `coverage: \"observed\"` as a reminder.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
     "version": "1.0.0"
   },
   "servers": [
@@ -17,14 +17,43 @@
           "Live"
         ],
         "summary": "Counts",
-        "description": "Aircraft and station counts from the live snapshot. 503 if the snapshot is older than 60 seconds.",
+        "description": "Aircraft and station counts from the live snapshot. 503 if the snapshot is older than 60 seconds. Rate: 600 per 600 s (bucket `now`). Cache: 10 s edge, 5 s browser.",
         "operationId": "now",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "properties": {
+                    "aircraft_count": {
+                      "type": "integer",
+                      "description": "Aircraft in the current snapshot."
+                    },
+                    "aircraft_with_pos": {
+                      "type": "integer",
+                      "description": "Of those, with a position."
+                    },
+                    "station_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Feeders connected right now. Null when presence is unavailable, never zero for that case."
+                    },
+                    "generated_at": {
+                      "type": "number",
+                      "description": "Snapshot time, unix seconds UTC. Never older than 60 s (503 instead)."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "aircraft_count",
+                    "aircraft_with_pos",
+                    "station_count",
+                    "generated_at"
+                  ]
+                },
                 "example": {
                   "aircraft_count": 7,
                   "aircraft_with_pos": 5,
@@ -35,12 +64,59 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Live snapshot older than 60 seconds."
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
     "/v1/aircraft": {
@@ -49,16 +125,99 @@
           "Live"
         ],
         "summary": "Aircraft",
-        "description": "Aircraft the network hears right now. Fields: hex, flight, t, r, lat, lon, alt_baro, gs, track, category, squawk, seen, seen_pos. 503 if the snapshot is older than 60 seconds.",
+        "description": "Aircraft the network hears right now, readsb field dialect. 503 if the snapshot is older than 60 seconds. Rate: 300 per 600 s (bucket `aircraft`). Cache: 10 s edge, 5 s browser.",
         "operationId": "aircraft",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "properties": {
+                    "generated_at": {
+                      "type": "number",
+                      "description": "Snapshot time, unix seconds UTC."
+                    },
+                    "aircraft": {
+                      "items": {
+                        "properties": {
+                          "hex": {
+                            "type": "string",
+                            "description": "ICAO 24-bit address, lowercase hex."
+                          },
+                          "flight": {
+                            "type": "string",
+                            "description": "Callsign, trailing spaces stripped. Absent when not broadcast."
+                          },
+                          "t": {
+                            "type": "string",
+                            "description": "ICAO type designator."
+                          },
+                          "r": {
+                            "type": "string",
+                            "description": "Registration."
+                          },
+                          "lat": {
+                            "type": "number",
+                            "description": "WGS84 degrees."
+                          },
+                          "lon": {
+                            "type": "number",
+                            "description": "WGS84 degrees."
+                          },
+                          "alt_baro": {
+                            "oneOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "const": "ground"
+                              }
+                            ],
+                            "description": "Barometric altitude, feet, or the string \"ground\"."
+                          },
+                          "gs": {
+                            "type": "number",
+                            "description": "Ground speed, knots."
+                          },
+                          "track": {
+                            "type": "number",
+                            "description": "Track, degrees true."
+                          },
+                          "category": {
+                            "type": "string",
+                            "description": "ADS-B emitter category (A0-D7)."
+                          },
+                          "squawk": {
+                            "type": "string",
+                            "description": "Transponder code, 4 octal digits."
+                          },
+                          "seen": {
+                            "type": "number",
+                            "description": "Seconds since the last message."
+                          },
+                          "seen_pos": {
+                            "type": "number",
+                            "description": "Seconds since the last position."
+                          }
+                        },
+                        "type": "object",
+                        "required": [
+                          "hex"
+                        ],
+                        "description": "readsb passthrough dialect. Optional fields are absent when unknown, never null."
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "generated_at",
+                    "aircraft"
+                  ]
+                },
                 "example": {
-                  "now": 1787924061.0,
+                  "generated_at": 1787924061.0,
                   "aircraft": [
                     {
                       "hex": "76cd06",
@@ -81,33 +240,80 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Live snapshot older than 60 seconds."
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
-    "/v1/trace/{hex_id}": {
+    "/v1/trace/{hex}": {
       "get": {
         "tags": [
           "Live"
         ],
         "summary": "Trace",
-        "description": "Recent positions for one aircraft, oldest first. Each point is [t, lat, lon, alt_baro, track]. Held in memory, about 30 minutes. 404 if none.",
+        "description": "Recent positions for one aircraft, oldest first. Each point is [t, lat, lon, alt_baro, track]. Held in memory about 30 minutes; a restart forgets and trails regrow. 404 if none. Rate: 600 per 600 s (bucket `trace`). Cache: 5 s edge.",
         "operationId": "trace",
         "parameters": [
           {
-            "name": "hex_id",
+            "name": "hex",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "ICAO 24-bit address, hex. Case-insensitive.",
-              "title": "Hex Id"
+              "description": "ICAO 24-bit address, 6 hex chars. Case-insensitive.",
+              "title": "Hex"
             },
-            "description": "ICAO 24-bit address, hex. Case-insensitive."
+            "description": "ICAO 24-bit address, 6 hex chars. Case-insensitive."
           }
         ],
         "responses": {
@@ -115,7 +321,60 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number",
+                            "description": "Unix seconds UTC."
+                          },
+                          {
+                            "type": "number",
+                            "description": "Latitude, degrees."
+                          },
+                          {
+                            "type": "number",
+                            "description": "Longitude, degrees."
+                          },
+                          {
+                            "description": "Barometric altitude, feet, \"ground\", or null.",
+                            "oneOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "const": "ground"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "description": "Track, degrees true."
+                          }
+                        ]
+                      },
+                      "description": "[t, lat, lon, alt_baro, track], oldest first."
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "points"
+                  ]
+                },
                 "example": {
                   "hex": "76cd06",
                   "points": [
@@ -139,67 +398,57 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/v1/route/{callsign}": {
-      "get": {
-        "tags": [
-          "History"
-        ],
-        "summary": "Route",
-        "description": "Origin and destination for a callsign, from derived traces. 404 if unknown.",
-        "operationId": "route",
-        "parameters": [
-          {
-            "name": "callsign",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Callsign or flight ident.",
-              "title": "Callsign"
-            },
-            "description": "Callsign or flight ident."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
+          },
+          "404": {
+            "description": "Not found or not observed.",
             "content": {
               "application/json": {
-                "schema": {},
-                "example": {
-                  "callsign": "SIA123",
-                  "route": [
-                    "SIN",
-                    "LHR"
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
                   ]
                 }
               }
             }
           },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -210,223 +459,8 @@
               }
             }
           }
-        }
-      }
-    },
-    "/v1/airframe/{hex_id}": {
-      "get": {
-        "tags": [
-          "History"
-        ],
-        "summary": "Airframe log",
-        "description": "Observed legs for one aircraft, newest first. window is the number of days covered. Observation, not a published schedule. 404 if none.",
-        "operationId": "airframe",
-        "parameters": [
-          {
-            "name": "hex_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "ICAO 24-bit address, hex. Case-insensitive.",
-              "title": "Hex Id"
-            },
-            "description": "ICAO 24-bit address, hex. Case-insensitive."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "hex": "76cd06",
-                  "reg": "9V-SHF",
-                  "type": "A359",
-                  "window": "60",
-                  "legs": [
-                    {
-                      "date": "2026-08-27",
-                      "org": "SIN",
-                      "dst": "LHR",
-                      "dep_ts": 1787800000,
-                      "arr_ts": 1787845000,
-                      "max_alt": 41000,
-                      "callsign": "SQ322"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/airport/{code}": {
-      "get": {
-        "tags": [
-          "History"
-        ],
-        "summary": "Airport",
-        "description": "Observed totals and busiest routes, plus an inferred departures board in local time. IATA or ICAO code. Circuits excluded. 404 if none.",
-        "operationId": "airport",
-        "parameters": [
-          {
-            "name": "code",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "IATA or ICAO airport code.",
-              "title": "Code"
-            },
-            "description": "IATA or ICAO airport code."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": "SIN",
-                  "departures": 120,
-                  "destinations": 40,
-                  "tails": 80,
-                  "days_observed": 60,
-                  "routes": [
-                    {
-                      "dst": "LHR",
-                      "flights": 14,
-                      "days": 7
-                    }
-                  ],
-                  "board": [
-                    {
-                      "flight": "SQ322",
-                      "dst": "LHR",
-                      "dep": "09:00",
-                      "arr": "15:10",
-                      "type": "A359",
-                      "flights": 12,
-                      "source": "adsb"
-                    }
-                  ],
-                  "airlines": [
-                    {
-                      "icao": "SIA",
-                      "flights": 90
-                    }
-                  ],
-                  "times": "local",
-                  "window": "60"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Invalid path."
-          }
-        }
-      }
-    },
-    "/v1/flight/{callsign}": {
-      "get": {
-        "tags": [
-          "History"
-        ],
-        "summary": "Flight",
-        "description": "Observed legs, airframes, and recent operations for one flight number. Typical local times when known. 404 if none.",
-        "operationId": "flight",
-        "parameters": [
-          {
-            "name": "callsign",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Callsign or flight ident.",
-              "title": "Callsign"
-            },
-            "description": "Callsign or flight ident."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "callsign": "SQ322",
-                  "legs": [
-                    {
-                      "org": "SIN",
-                      "dst": "LHR",
-                      "flights": 12,
-                      "days": 7,
-                      "last": "2026-08-27",
-                      "dep": "09:00",
-                      "arr": "15:10",
-                      "type": "A359"
-                    }
-                  ],
-                  "aircraft": [
-                    {
-                      "hex": "76cd06",
-                      "reg": "9V-SHF",
-                      "type": "A359",
-                      "flights": 8
-                    }
-                  ],
-                  "recent": [
-                    {
-                      "date": "2026-08-27",
-                      "org": "SIN",
-                      "dst": "LHR",
-                      "dep_ts": 1787800000,
-                      "arr_ts": 1787845000
-                    }
-                  ],
-                  "window": "60"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Invalid path."
-          }
-        }
+        },
+        "x-stability": "stable"
       }
     },
     "/v2/point/{lat}/{lon}/{radius}": {
@@ -435,7 +469,7 @@
           "Live"
         ],
         "summary": "Point",
-        "description": "Aircraft within radius nautical miles of a point. Radius is capped at 250. Response is the common v2 envelope (ac, now, total). Fields inside ac come from the aggregator, not the /v1/aircraft allowlist. 502 if the aggregator is down.",
+        "description": "Aircraft within radius nautical miles of a point, from the live snapshot. Radius is capped at 250. The common v2 envelope (ac, now, total) so ecosystem tooling can consume it unchanged; fields inside ac are the /v1/aircraft allowlist plus dst (distance, nm), nearest first. 503 if the snapshot is older than 60 seconds. Rate: 300 per 600 s (bucket `point`). Cache: 5 s edge.",
         "operationId": "point",
         "parameters": [
           {
@@ -477,35 +511,1196 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ac": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "hex": {
+                            "type": "string",
+                            "description": "ICAO 24-bit address, lowercase hex."
+                          },
+                          "flight": {
+                            "type": "string",
+                            "description": "Callsign, trailing spaces stripped. Absent when not broadcast."
+                          },
+                          "t": {
+                            "type": "string",
+                            "description": "ICAO type designator."
+                          },
+                          "r": {
+                            "type": "string",
+                            "description": "Registration."
+                          },
+                          "lat": {
+                            "type": "number",
+                            "description": "WGS84 degrees."
+                          },
+                          "lon": {
+                            "type": "number",
+                            "description": "WGS84 degrees."
+                          },
+                          "alt_baro": {
+                            "description": "Barometric altitude, feet, or the string \"ground\".",
+                            "oneOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "const": "ground"
+                              }
+                            ]
+                          },
+                          "gs": {
+                            "type": "number",
+                            "description": "Ground speed, knots."
+                          },
+                          "track": {
+                            "type": "number",
+                            "description": "Track, degrees true."
+                          },
+                          "category": {
+                            "type": "string",
+                            "description": "ADS-B emitter category (A0-D7)."
+                          },
+                          "squawk": {
+                            "type": "string",
+                            "description": "Transponder code, 4 octal digits."
+                          },
+                          "seen": {
+                            "type": "number",
+                            "description": "Seconds since the last message."
+                          },
+                          "seen_pos": {
+                            "type": "number",
+                            "description": "Seconds since the last position."
+                          }
+                        },
+                        "required": [
+                          "hex"
+                        ],
+                        "description": "readsb passthrough dialect. Optional fields are absent when unknown, never null."
+                      },
+                      "description": "Snapshot aircraft within the radius, nearest first, plus dst (distance, nm)."
+                    },
+                    "msg": {
+                      "type": "string",
+                      "description": "Always \"No error\" on 200."
+                    },
+                    "now": {
+                      "type": "number",
+                      "description": "Snapshot time, unix seconds UTC."
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "ctime": {
+                      "type": "number",
+                      "description": "Same as now; envelope compatibility."
+                    },
+                    "ptime": {
+                      "type": "number",
+                      "description": "Processing time, ms."
+                    }
+                  },
+                  "required": [
+                    "ac",
+                    "msg",
+                    "now",
+                    "total",
+                    "ctime",
+                    "ptime"
+                  ]
+                },
                 "example": {
                   "ac": [
                     {
                       "hex": "76cd06",
                       "flight": "SIA123",
+                      "t": "A359",
                       "lat": 1.5,
-                      "lon": 103.8
+                      "lon": 103.8,
+                      "alt_baro": 6325,
+                      "gs": 285.9,
+                      "track": 85.4,
+                      "seen": 0.2,
+                      "seen_pos": 1.1,
+                      "dst": 9.4
                     }
                   ],
                   "msg": "No error",
                   "now": 1787924061.0,
                   "total": 1,
                   "ctime": 1787924061.0,
-                  "ptime": 12.4
+                  "ptime": 0.4
                 }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "422": {
-            "description": "Invalid path."
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
-          "502": {
-            "description": "Aggregator unavailable."
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           }
-        }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/airframes/{hex}": {
+      "get": {
+        "tags": [
+          "History",
+          "History"
+        ],
+        "summary": "Airframe",
+        "description": "One aircraft: registry identity and the observed flight log, newest first. legs is null when the log artifact is not loaded, empty when the aircraft was not seen in the window. Observation, not a registry of record. 404 if nothing is known. Rate: 300 per 600 s (bucket `airframe`). Cache: 1 h edge.",
+        "operationId": "airframe",
+        "parameters": [
+          {
+            "name": "hex",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO 24-bit address, 6 hex chars. Case-insensitive.",
+              "title": "Hex"
+            },
+            "description": "ICAO 24-bit address, 6 hex chars. Case-insensitive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "reg": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Registration."
+                    },
+                    "type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "ICAO type designator."
+                    },
+                    "type_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "category": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Type category (narrow, wide, ...)."
+                    },
+                    "operator": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Operator name."
+                    },
+                    "operator_icao": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Observed operator: majority callsign prefix."
+                    },
+                    "year": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Build year."
+                    },
+                    "source": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Registry row provenance."
+                    },
+                    "airline": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "Operator airline when resolved."
+                    },
+                    "legs": {
+                      "description": "Observed legs, newest first. Empty array = not seen in the window; null = the log artifact is not loaded.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "date": {
+                                "type": "string",
+                                "description": "YYYY-MM-DD, UTC."
+                              },
+                              "org": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Origin, IATA."
+                              },
+                              "dst": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Destination, IATA."
+                              },
+                              "dep_ts": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "description": "First-seen time, unix seconds UTC."
+                              },
+                              "arr_ts": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "description": "Last-seen time, unix seconds UTC."
+                              },
+                              "max_alt": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "description": "Max observed barometric altitude, feet."
+                              },
+                              "callsign": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "window_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Days of history the log covers. Null when the log artifact is not loaded."
+                    },
+                    "coverage": {
+                      "type": "string",
+                      "description": "Always \"observed\": evidence from our receivers and open trace archives, never a published schedule or registry.",
+                      "const": "observed"
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "legs",
+                    "window_days",
+                    "coverage"
+                  ]
+                },
+                "example": {
+                  "hex": "76cd06",
+                  "reg": "9V-SHF",
+                  "type": "A359",
+                  "type_name": "Airbus A350-900",
+                  "category": "wide",
+                  "operator": "Singapore Airlines",
+                  "operator_icao": "SIA",
+                  "year": 2019,
+                  "source": "tar1090",
+                  "airline": {
+                    "icao": "SIA",
+                    "iata": "SQ",
+                    "name": "Singapore Airlines",
+                    "palette": [
+                      "#1D4886",
+                      "#FCB130"
+                    ],
+                    "alliances": []
+                  },
+                  "legs": [
+                    {
+                      "date": "2026-08-27",
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "dep_ts": 1787800000,
+                      "arr_ts": 1787845000,
+                      "max_alt": 41000,
+                      "callsign": "SQ322"
+                    }
+                  ],
+                  "window_days": 60,
+                  "coverage": "observed"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/flights/{callsign}": {
+      "get": {
+        "tags": [
+          "History",
+          "History"
+        ],
+        "summary": "Flight",
+        "description": "One flight number: derived route, observed legs with typical local times, the airframes that fly it, recent operations. Sections fed by an unloaded artifact are null. Observation, not a published schedule. 404 if never observed. Rate: 120 per 600 s (bucket `flight`). Cache: 1 h edge.",
+        "operationId": "flight",
+        "parameters": [
+          {
+            "name": "callsign",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Callsign or flight ident, 2-12 alphanumerics.",
+              "title": "Callsign"
+            },
+            "description": "Callsign or flight ident, 2-12 alphanumerics."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "callsign": {
+                      "type": "string"
+                    },
+                    "route": {
+                      "description": "[origin, ...via, destination], IATA, from the derived routes artifact. Null when unknown or the artifact is not loaded.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "legs": {
+                      "description": "Observed legs, busiest first, with typical local times when the inferred timetable knows them. Null = log artifact not loaded.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "org": {
+                                "type": "string"
+                              },
+                              "dst": {
+                                "type": "string"
+                              },
+                              "flights": {
+                                "type": "integer",
+                                "description": "Observed count."
+                              },
+                              "days": {
+                                "type": "integer",
+                                "description": "Distinct days observed."
+                              },
+                              "last": {
+                                "type": "string",
+                                "description": "Last date observed, YYYY-MM-DD."
+                              },
+                              "dep": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Typical departure, HH:MM local at origin."
+                              },
+                              "arr": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Typical arrival, HH:MM local at destination."
+                              },
+                              "type": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Dominant type."
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aircraft": {
+                      "description": "Airframes flying it, busiest first. Null = log artifact not loaded.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "hex": {
+                                "type": "string"
+                              },
+                              "reg": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "type": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "flights": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recent": {
+                      "description": "Latest operations, newest first. Null = log artifact not loaded.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "date": {
+                                "type": "string"
+                              },
+                              "org": {
+                                "type": "string"
+                              },
+                              "dst": {
+                                "type": "string"
+                              },
+                              "dep_ts": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "arr_ts": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "window_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Days of history the log covers. Null when the log artifact is not loaded."
+                    },
+                    "coverage": {
+                      "type": "string",
+                      "description": "Always \"observed\": evidence from our receivers and open trace archives, never a published schedule or registry.",
+                      "const": "observed"
+                    }
+                  },
+                  "required": [
+                    "callsign",
+                    "route",
+                    "legs",
+                    "aircraft",
+                    "recent",
+                    "window_days",
+                    "coverage"
+                  ]
+                },
+                "example": {
+                  "callsign": "SQ322",
+                  "route": [
+                    "SIN",
+                    "LHR"
+                  ],
+                  "legs": [
+                    {
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "flights": 12,
+                      "days": 7,
+                      "last": "2026-08-27",
+                      "dep": "09:00",
+                      "arr": "15:10",
+                      "type": "A359"
+                    }
+                  ],
+                  "aircraft": [
+                    {
+                      "hex": "76cd06",
+                      "reg": "9V-SHF",
+                      "type": "A359",
+                      "flights": 8
+                    }
+                  ],
+                  "recent": [
+                    {
+                      "date": "2026-08-27",
+                      "org": "SIN",
+                      "dst": "LHR",
+                      "dep_ts": 1787800000,
+                      "arr_ts": 1787845000
+                    }
+                  ],
+                  "window_days": 60,
+                  "coverage": "observed"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/airports/{code}": {
+      "get": {
+        "tags": [
+          "History",
+          "History"
+        ],
+        "summary": "Airport",
+        "description": "One airport, IATA or ICAO code: registry identity, observed totals and busiest routes, and the inferred departures board in the airport's LOCAL time. Circuits excluded. observed is null when the log artifact is not loaded. 404 if unknown. Rate: 120 per 600 s (bucket `airport`). Cache: 1 h edge.",
+        "operationId": "airport",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "IATA or ICAO airport code.",
+              "title": "Code"
+            },
+            "description": "IATA or ICAO airport code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "iata": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ident": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "ICAO ident."
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kind": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "OurAirports kind (large_airport, ...)."
+                    },
+                    "lat": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lon": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "iso_country": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "municipality": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tz": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Olson timezone."
+                    },
+                    "observed": {
+                      "description": "Totals from the flight log. Null = log artifact not loaded. Circuits excluded.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "departures": {
+                              "type": "integer"
+                            },
+                            "destinations": {
+                              "type": "integer"
+                            },
+                            "tails": {
+                              "type": "integer",
+                              "description": "Distinct airframes."
+                            },
+                            "days_observed": {
+                              "type": "integer"
+                            },
+                            "routes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "dst": {
+                                    "type": "string",
+                                    "description": "Destination, IATA."
+                                  },
+                                  "flights": {
+                                    "type": "integer"
+                                  },
+                                  "days": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              "description": "Busiest routes, top 15."
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "board": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "flight": {
+                            "type": "string",
+                            "description": "Marketed number when known, else the callsign."
+                          },
+                          "dst": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "dep": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "HH:MM, local."
+                          },
+                          "arr": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "HH:MM, local at destination."
+                          },
+                          "type": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "flights": {
+                            "type": "integer",
+                            "description": "Observation count behind the row."
+                          },
+                          "source": {
+                            "type": "string",
+                            "description": "observed | published | both."
+                          }
+                        }
+                      },
+                      "description": "Inferred typical departures, local time, dep-sorted."
+                    },
+                    "airlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "icao": {
+                            "type": "string"
+                          },
+                          "flights": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "description": "Busiest airlines on the board, top 20."
+                    },
+                    "times": {
+                      "type": "string",
+                      "const": "local"
+                    },
+                    "window_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Days of history the log covers. Null when the log artifact is not loaded."
+                    },
+                    "coverage": {
+                      "type": "string",
+                      "description": "Always \"observed\": evidence from our receivers and open trace archives, never a published schedule or registry.",
+                      "const": "observed"
+                    }
+                  },
+                  "required": [
+                    "iata",
+                    "ident",
+                    "observed",
+                    "board",
+                    "airlines",
+                    "times",
+                    "window_days",
+                    "coverage"
+                  ]
+                },
+                "example": {
+                  "iata": "SIN",
+                  "ident": "WSSS",
+                  "name": "Singapore Changi",
+                  "kind": "large_airport",
+                  "lat": 1.35019,
+                  "lon": 103.994,
+                  "iso_country": "SG",
+                  "municipality": "Singapore",
+                  "tz": "Asia/Singapore",
+                  "observed": {
+                    "departures": 120,
+                    "destinations": 40,
+                    "tails": 80,
+                    "days_observed": 60,
+                    "routes": [
+                      {
+                        "dst": "LHR",
+                        "flights": 14,
+                        "days": 7
+                      }
+                    ]
+                  },
+                  "board": [
+                    {
+                      "flight": "SQ322",
+                      "dst": "LHR",
+                      "dep": "09:00",
+                      "arr": "15:10",
+                      "type": "A359",
+                      "flights": 12,
+                      "source": "observed"
+                    }
+                  ],
+                  "airlines": [
+                    {
+                      "icao": "SIA",
+                      "flights": 90
+                    }
+                  ],
+                  "times": "local",
+                  "window_days": 60,
+                  "coverage": "observed"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
       }
     },
     "/v1/stations": {
@@ -514,14 +1709,70 @@
           "Stations"
         ],
         "summary": "Roster",
-        "description": "Public feeder list. Locations rounded to about 11 km. IPs are not stored.",
+        "description": "Public feeder list. Locations rounded to about 11 km. IPs are not stored. Rate: 120 per 600 s (bucket `stations`). Cache: 30 s edge.",
         "operationId": "stations",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "properties": {
+                    "stations": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Public id, fp-<10 hex>. Reveals no UUID bits."
+                          },
+                          "label": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Founder-set display label."
+                          },
+                          "coarse_lat": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "description": "Coverage midpoint, rounded ~11 km."
+                          },
+                          "coarse_lon": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "first_seen": {
+                            "type": "string",
+                            "description": "ISO 8601 UTC."
+                          },
+                          "last_seen": {
+                            "type": "string",
+                            "description": "ISO 8601 UTC."
+                          },
+                          "online": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "first_seen",
+                          "last_seen",
+                          "online"
+                        ]
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "stations"
+                  ]
+                },
                 "example": {
                   "stations": [
                     {
@@ -538,9 +1789,35 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
     "/v1/stations/{station_uuid}": {
@@ -549,7 +1826,7 @@
           "Stations"
         ],
         "summary": "Station",
-        "description": "Status for one feeder. The full UUID is the key; the server stores a hash. Unknown and malformed UUIDs both return 404.",
+        "description": "Status for one feeder. The full UUID is the key; the server stores a hash. Unknown and malformed UUIDs both return 404. The UUID travels in the URL: treat the link as the secret it carries. Rate: 60 per 600 s (bucket `station_detail`). Never cached.",
         "operationId": "station",
         "parameters": [
           {
@@ -569,7 +1846,96 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "online": {
+                      "type": "boolean"
+                    },
+                    "connected_since": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "ISO 8601 UTC. Null when offline."
+                    },
+                    "messages_per_s": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "positions_per_s": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "kbit_s": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "rtt_ms": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "positions_total": {
+                      "type": "integer"
+                    },
+                    "aircraft_seen": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Aircraft this station sees right now. Null when unavailable."
+                    },
+                    "first_seen": {
+                      "type": "string"
+                    },
+                    "last_seen": {
+                      "type": "string"
+                    },
+                    "recent_sessions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "started_at": {
+                            "type": "string"
+                          },
+                          "ended_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Null while open."
+                          },
+                          "peak_messages_per_s": {
+                            "type": "number"
+                          },
+                          "positions_total": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "online",
+                    "positions_total",
+                    "first_seen",
+                    "last_seen",
+                    "recent_sessions"
+                  ]
+                },
                 "example": {
                   "id": "fp-a1b2c3d4e5",
                   "online": true,
@@ -593,10 +1959,56 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -608,28 +2020,149 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
-    "/v1/refdata/aircraft/{hex_id}": {
+    "/v1/airlines": {
       "get": {
         "tags": [
           "Reference"
         ],
-        "summary": "Aircraft lookup",
-        "description": "Registration, type, and operator for one ICAO hex.",
-        "operationId": "ref_aircraft",
+        "summary": "Airlines",
+        "description": "Airlines in the reference tables, with observed route and country counts so a consumer can rank and filter in one request. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airlines",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "airlines": {
+                      "items": {
+                        "properties": {
+                          "icao": {
+                            "type": "string"
+                          },
+                          "iata": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "palette": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array",
+                            "description": "Brand hexes, primary first."
+                          },
+                          "alliances": {
+                            "items": {
+                              "type": "object"
+                            },
+                            "type": "array",
+                            "description": "Sourced memberships."
+                          },
+                          "n_routes": {
+                            "type": "integer",
+                            "description": "Observed routes. A lower bound."
+                          },
+                          "n_countries": {
+                            "type": "integer",
+                            "description": "Countries those routes touch."
+                          }
+                        },
+                        "type": "object",
+                        "required": [
+                          "icao",
+                          "name",
+                          "palette",
+                          "alliances"
+                        ]
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "airlines"
+                  ]
+                },
+                "example": {
+                  "airlines": [
+                    {
+                      "icao": "SIA",
+                      "iata": "SQ",
+                      "name": "Singapore Airlines",
+                      "palette": [
+                        "#1D4886",
+                        "#FCB130"
+                      ],
+                      "alliances": [],
+                      "n_routes": 40,
+                      "n_countries": 32
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/airlines/{icao}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline",
+        "description": "One airline. n_routes is an observed lower bound. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline",
         "parameters": [
           {
-            "name": "hex_id",
+            "name": "icao",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "ICAO 24-bit address, hex. Case-insensitive.",
-              "title": "Hex Id"
+              "description": "Airline ICAO code.",
+              "title": "Icao"
             },
-            "description": "ICAO 24-bit address, hex. Case-insensitive."
+            "description": "Airline ICAO code."
           }
         ],
         "responses": {
@@ -637,26 +2170,116 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "icao": {
+                      "type": "string"
+                    },
+                    "iata": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "palette": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Brand hexes, primary first."
+                    },
+                    "alliances": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Sourced memberships."
+                    },
+                    "n_routes": {
+                      "type": "integer",
+                      "description": "Observed routes. A lower bound."
+                    },
+                    "n_countries": {
+                      "type": "integer",
+                      "description": "Countries those routes touch."
+                    }
+                  },
+                  "required": [
+                    "icao",
+                    "name",
+                    "palette",
+                    "alliances"
+                  ]
+                },
                 "example": {
-                  "hex": "76cd06",
-                  "registration": "9V-SHF",
-                  "type": "A359",
-                  "operator": "Singapore Airlines",
-                  "operator_icao": "SIA",
-                  "year": 2019,
-                  "source": "tar1090",
-                  "type_name": "Airbus A350-900",
-                  "category": "wide"
+                  "icao": "SIA",
+                  "iata": "SQ",
+                  "name": "Singapore Airlines",
+                  "palette": [
+                    "#1D4886",
+                    "#FCB130"
+                  ],
+                  "alliances": [],
+                  "n_routes": 40
                 }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -668,17 +2291,99 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
-    "/v1/refdata/airlines": {
+    "/v1/alliances": {
       "get": {
         "tags": [
           "Reference"
         ],
-        "summary": "Airlines",
-        "description": "Airlines in the reference tables, with route and country counts.",
-        "operationId": "ref_airlines",
+        "summary": "Alliances",
+        "description": "Global alliances and how much of each we have observed. Member counts are official. Route, flight, and airframe counts are observed lower bounds. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "alliances",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "alliances": [
+                    {
+                      "slug": "star-alliance",
+                      "name": "Star Alliance",
+                      "website_url": "https://www.staralliance.com",
+                      "source_url": "https://www.staralliance.com/members",
+                      "source_checked_at": "2026-08-29",
+                      "n_members": 25,
+                      "n_members_observed": 20,
+                      "n_airlines": 26,
+                      "n_routes": 4200,
+                      "n_legs": 3100,
+                      "n_flights": 90000,
+                      "n_countries": 120,
+                      "n_airframes": 2400
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
+    "/v1/alliances/{slug}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Alliance",
+        "description": "One alliance: sourced memberships and observed coverage. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "alliance",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Alliance slug, for example star-alliance.",
+              "title": "Slug"
+            },
+            "description": "Alliance slug, for example star-alliance."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -689,19 +2394,175 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        }
+        },
+        "x-stability": "map"
       }
     },
-    "/v1/refdata/airlines/{icao}": {
+    "/v1/alliances/{slug}/routes": {
       "get": {
         "tags": [
           "Reference"
         ],
-        "summary": "Airline",
-        "description": "One airline.",
-        "operationId": "ref_airline",
+        "summary": "Alliance routes",
+        "description": "Observed legs across current member brands, undirected (org/dst in canonical alphabetical order). Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "alliance_routes",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Alliance slug, for example star-alliance.",
+              "title": "Slug"
+            },
+            "description": "Alliance slug, for example star-alliance."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
+    "/v1/airlines/{icao}/routes": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline routes",
+        "description": "Observed legs and the airports they touch, undirected (org/dst in canonical alphabetical order). Prefers flight-log frequencies; falls back to route chains when the log has no rows. n is the evidence count, a lower bound. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_routes",
         "parameters": [
           {
             "name": "icao",
@@ -723,23 +2584,88 @@
                 "schema": {},
                 "example": {
                   "icao": "SIA",
-                  "iata": "SQ",
-                  "name": "Singapore Airlines",
-                  "palette": [
-                    "#1D4886",
-                    "#FCB130"
-                  ],
-                  "alliances": [],
-                  "n_routes": 40
+                  "source": "flightlog",
+                  "airports": {
+                    "SIN": {
+                      "lat": 1.35019,
+                      "lon": 103.994,
+                      "name": "Singapore Changi",
+                      "iso_country": "SG",
+                      "tz": "Asia/Singapore"
+                    }
+                  },
+                  "legs": [
+                    {
+                      "org": "SIN",
+                      "dst": "SYD",
+                      "n": 7,
+                      "days": 7,
+                      "per_week": 7.0,
+                      "avg_min": 472,
+                      "aircraft": [
+                        {
+                          "type": "A388",
+                          "name": "Airbus A380-800",
+                          "n": 4
+                        }
+                      ]
+                    }
+                  ]
                 }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -751,187 +2677,18 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "map"
       }
     },
-    "/v1/refdata/alliances": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Alliances",
-        "description": "Global alliances and how much of each we have observed. Member counts are official. Route, flight, and airframe counts are observed lower bounds.",
-        "operationId": "ref_alliances",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          }
-        }
-      }
-    },
-    "/v1/refdata/alliances/{slug}": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Alliance",
-        "description": "One alliance: memberships and observed coverage.",
-        "operationId": "ref_alliance",
-        "parameters": [
-          {
-            "name": "slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Alliance slug, for example star-alliance.",
-              "title": "Slug"
-            },
-            "description": "Alliance slug, for example star-alliance."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/alliances/{slug}/routes": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Alliance routes",
-        "description": "Observed legs across current member brands.",
-        "operationId": "ref_alliance_routes",
-        "parameters": [
-          {
-            "name": "slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Alliance slug, for example star-alliance.",
-              "title": "Slug"
-            },
-            "description": "Alliance slug, for example star-alliance."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/airlines/{icao}/routes": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Airline routes",
-        "description": "Observed legs and the airports they touch. Prefers flight-log frequencies. Falls back to route chains if the log has no rows.",
-        "operationId": "ref_airline_routes",
-        "parameters": [
-          {
-            "name": "icao",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Airline ICAO code.",
-              "title": "Icao"
-            },
-            "description": "Airline ICAO code."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/airlines/{icao}/leg/{o}/{d}": {
+    "/v1/airlines/{icao}/leg/{org}/{dst}": {
       "get": {
         "tags": [
           "Reference"
         ],
         "summary": "Airline leg",
-        "description": "Airframes seen on one undirected airport pair, most frequent first. Endpoints can be in either order.",
-        "operationId": "ref_airline_leg",
+        "description": "Airframes seen on one undirected airport pair, most frequent first. Endpoints can be in either order. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_leg",
         "parameters": [
           {
             "name": "icao",
@@ -945,42 +2702,103 @@
             "description": "Airline ICAO code."
           },
           {
-            "name": "o",
+            "name": "org",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Airport code. The pair is undirected; order does not matter.",
-              "title": "O"
+              "description": "Airport code (IATA). The pair is undirected; order does not matter.",
+              "title": "Org"
             },
-            "description": "Airport code. The pair is undirected; order does not matter."
+            "description": "Airport code (IATA). The pair is undirected; order does not matter."
           },
           {
-            "name": "d",
+            "name": "dst",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Airport code. The pair is undirected; order does not matter.",
-              "title": "D"
+              "description": "Airport code (IATA). The pair is undirected; order does not matter.",
+              "title": "Dst"
             },
-            "description": "Airport code. The pair is undirected; order does not matter."
+            "description": "Airport code (IATA). The pair is undirected; order does not matter."
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "OK",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "org": "SIN",
+                  "dst": "SYD",
+                  "flights": 7,
+                  "days": 7,
+                  "airframes": [
+                    {
+                      "hex": "76cd01",
+                      "reg": "9V-SHA",
+                      "type": "A359",
+                      "flights": 7
+                    }
+                  ]
+                }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -992,17 +2810,18 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "map"
       }
     },
-    "/v1/refdata/airlines/{icao}/schedule/{o}/{d}": {
+    "/v1/airlines/{icao}/schedule/{org}/{dst}": {
       "get": {
         "tags": [
           "Reference"
         ],
         "summary": "Airline schedule",
-        "description": "Inferred timetable for a route, both directions. Times are local at origin. Observation, not a published schedule.",
-        "operationId": "ref_airline_schedule",
+        "description": "Inferred timetable for a route, both directions. Times are HH:MM local at each row's origin. Observation, not a published schedule. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_schedule",
         "parameters": [
           {
             "name": "icao",
@@ -1016,42 +2835,109 @@
             "description": "Airline ICAO code."
           },
           {
-            "name": "o",
+            "name": "org",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Airport code. The pair is undirected; order does not matter.",
-              "title": "O"
+              "description": "Airport code (IATA). The pair is undirected; order does not matter.",
+              "title": "Org"
             },
-            "description": "Airport code. The pair is undirected; order does not matter."
+            "description": "Airport code (IATA). The pair is undirected; order does not matter."
           },
           {
-            "name": "d",
+            "name": "dst",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Airport code. The pair is undirected; order does not matter.",
-              "title": "D"
+              "description": "Airport code (IATA). The pair is undirected; order does not matter.",
+              "title": "Dst"
             },
-            "description": "Airport code. The pair is undirected; order does not matter."
+            "description": "Airport code (IATA). The pair is undirected; order does not matter."
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "OK",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "org": "SIN",
+                  "dst": "SYD",
+                  "departures": [
+                    {
+                      "callsign": "SIA322",
+                      "flight": "SQ322",
+                      "source": "observed",
+                      "org": "SIN",
+                      "dst": "SYD",
+                      "dep": "09:30",
+                      "dep_min": 570,
+                      "arr": "18:40",
+                      "arr_min": 1120,
+                      "type": "A359",
+                      "type_name": "Airbus A350-900",
+                      "n_flights": 30
+                    }
+                  ]
+                }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1063,17 +2949,18 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "map"
       }
     },
-    "/v1/refdata/airlines/{icao}/countries": {
+    "/v1/airlines/{icao}/countries": {
       "get": {
         "tags": [
           "Reference"
         ],
         "summary": "Airline countries",
-        "description": "Countries this airline's observed routes touch.",
-        "operationId": "ref_airline_countries",
+        "description": "Countries this airline's observed routes touch. n_routes is the evidence count, so a consumer can threshold thin coverage. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_countries",
         "parameters": [
           {
             "name": "icao",
@@ -1089,18 +2976,73 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "OK",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "countries": [
+                    {
+                      "iso_country": "SG",
+                      "n_routes": 40
+                    }
+                  ]
+                }
               }
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1112,17 +3054,18 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "map"
       }
     },
-    "/v1/refdata/airlines/{icao}/fleet/{designator}": {
+    "/v1/airlines/{icao}/fleet/{designator}": {
       "get": {
         "tags": [
           "Reference"
         ],
         "summary": "Airline fleet type",
-        "description": "Airframes of one type in an airline's observed fleet.",
-        "operationId": "ref_airline_fleet_type",
+        "description": "Airframes of one type in an airline's observed fleet. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_fleet_type",
         "parameters": [
           {
             "name": "icao",
@@ -1135,104 +3078,6 @@
             },
             "description": "Airline ICAO code."
           },
-          {
-            "name": "designator",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "ICAO type designator, for example A359.",
-              "title": "Designator"
-            },
-            "description": "ICAO type designator, for example A359."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/airlines/{icao}/fleet": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Airline fleet",
-        "description": "Observed fleet grouped by type. Not a published fleet list.",
-        "operationId": "ref_airline_fleet",
-        "parameters": [
-          {
-            "name": "icao",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Airline ICAO code.",
-              "title": "Icao"
-            },
-            "description": "Airline ICAO code."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/types/{designator}": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Type",
-        "description": "ICAO type designator to name.",
-        "operationId": "ref_type",
-        "parameters": [
           {
             "name": "designator",
             "in": "path",
@@ -1251,6 +3096,242 @@
             "content": {
               "application/json": {
                 "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "type": "A359",
+                  "type_name": "Airbus A350-900",
+                  "airframes": [
+                    {
+                      "hex": "76cd01",
+                      "reg": "9V-SHA"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
+    "/v1/airlines/{icao}/fleet": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline fleet",
+        "description": "Observed fleet grouped by type. Not a published fleet list; n_airframes says how much evidence the answer is built from. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_fleet",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "icao": "SIA",
+                  "n_airframes": 3,
+                  "fleet": [
+                    {
+                      "type": "A359",
+                      "type_name": "Airbus A350-900",
+                      "count": 2
+                    }
+                  ],
+                  "unknown_type": 0
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
+    "/v1/types/{designator}": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Type",
+        "description": "ICAO type designator to name and category. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "aircraft_type",
+        "parameters": [
+          {
+            "name": "designator",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ICAO type designator, for example A359.",
+              "title": "Designator"
+            },
+            "description": "ICAO type designator, for example A359."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "designator": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "designator",
+                    "name",
+                    "category"
+                  ]
+                },
                 "example": {
                   "designator": "A359",
                   "name": "Airbus A350-900",
@@ -1260,69 +3341,56 @@
             }
           },
           "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
-          "404": {
-            "description": "Not found."
-          },
-          "422": {
-            "description": "Validation Error",
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/refdata/airports/{ident}": {
-      "get": {
-        "tags": [
-          "Reference"
-        ],
-        "summary": "Airport lookup",
-        "description": "One airport from the reference tables.",
-        "operationId": "ref_airport",
-        "parameters": [
-          {
-            "name": "ident",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "IATA or ICAO airport code.",
-              "title": "Ident"
-            },
-            "description": "IATA or ICAO airport code."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {},
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
                 "example": {
-                  "ident": "WSSS",
-                  "name": "Singapore Changi",
-                  "kind": "large_airport",
-                  "lat": 1.35019,
-                  "lon": 103.994,
-                  "iso_country": "SG",
-                  "municipality": "Singapore",
-                  "iata": "SIN"
+                  "error": "rate_limited",
+                  "detail": "slow down"
                 }
               }
             }
           },
-          "429": {
-            "description": "Rate limited. Per IP, 600 second window."
-          },
           "404": {
-            "description": "Not found."
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1334,7 +3402,8 @@
               }
             }
           }
-        }
+        },
+        "x-stability": "stable"
       }
     },
     "/healthz": {
@@ -1343,14 +3412,24 @@
           "Meta"
         ],
         "summary": "Health",
-        "description": "Liveness. Does not check the aggregator.",
+        "description": "Liveness. Does not check the aggregator; a sick readsb shows up as 503 on the data routes.",
         "operationId": "healthz",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ]
+                },
                 "example": {
                   "ok": true
                 }
@@ -1358,7 +3437,8 @@
             }
           }
         },
-        "x-hidden": true
+        "x-hidden": true,
+        "x-stability": "stable"
       }
     },
     "/": {
@@ -1367,18 +3447,61 @@
           "Meta"
         ],
         "summary": "Index",
-        "description": "Name, docs, source, terms, attribution, and the feed address.",
+        "description": "Name, docs, spec, source, terms, attribution, and the feed address.",
         "operationId": "index",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": {},
+                "schema": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "docs": {
+                      "type": "string",
+                      "description": "Human documentation."
+                    },
+                    "openapi": {
+                      "type": "string",
+                      "description": "Machine-readable spec path."
+                    },
+                    "swagger": {
+                      "type": "string",
+                      "description": "Interactive spec UI path."
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "Public repository (map client and docs)."
+                    },
+                    "terms": {
+                      "type": "string"
+                    },
+                    "attribution": {
+                      "type": "string",
+                      "description": "The ODbL credit line."
+                    },
+                    "feed": {
+                      "type": "string",
+                      "description": "Where to point an antenna."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "docs",
+                    "openapi",
+                    "terms",
+                    "attribution",
+                    "feed"
+                  ]
+                },
                 "example": {
                   "name": "FlightPortrait network API",
                   "docs": "https://docs.flightportrait.com/api/reference",
-                  "openapi": "/docs",
+                  "openapi": "/openapi.json",
+                  "swagger": "/docs",
                   "source": "https://github.com/flightportrait/network",
                   "terms": "https://flightportrait.com/network/terms",
                   "attribution": "Data (c) FlightPortrait network feeders, ODbL 1.0",
@@ -1388,7 +3511,8 @@
             }
           }
         },
-        "x-hidden": true
+        "x-hidden": true,
+        "x-stability": "stable"
       }
     }
   },
@@ -1456,7 +3580,7 @@
     },
     {
       "name": "History",
-      "description": "Observed legs and routes."
+      "description": "Observed airframes, flights, airports."
     },
     {
       "name": "Stations",
@@ -1464,7 +3588,7 @@
     },
     {
       "name": "Reference",
-      "description": "Aircraft, airlines, airports, types."
+      "description": "Airlines, alliances, types."
     },
     {
       "name": "Meta",

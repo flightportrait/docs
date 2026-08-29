@@ -50,17 +50,16 @@
             "pages": [
               "GET /v1/now",
               "GET /v1/aircraft",
-              "GET /v1/trace/{hex_id}",
+              "GET /v1/trace/{hex}",
               "GET /v2/point/{lat}/{lon}/{radius}"
             ]
           },
           {
             "group": "History",
             "pages": [
-              "GET /v1/route/{callsign}",
-              "GET /v1/airframe/{hex_id}",
-              "GET /v1/airport/{code}",
-              "GET /v1/flight/{callsign}"
+              "GET /v1/airframes/{hex}",
+              "GET /v1/flights/{callsign}",
+              "GET /v1/airports/{code}"
             ]
           },
           {
@@ -73,20 +72,18 @@
           {
             "group": "Reference",
             "pages": [
-              "GET /v1/refdata/aircraft/{hex_id}",
-              "GET /v1/refdata/airlines",
-              "GET /v1/refdata/airlines/{icao}",
-              "GET /v1/refdata/airlines/{icao}/routes",
-              "GET /v1/refdata/airlines/{icao}/leg/{o}/{d}",
-              "GET /v1/refdata/airlines/{icao}/schedule/{o}/{d}",
-              "GET /v1/refdata/airlines/{icao}/countries",
-              "GET /v1/refdata/airlines/{icao}/fleet",
-              "GET /v1/refdata/airlines/{icao}/fleet/{designator}",
-              "GET /v1/refdata/alliances",
-              "GET /v1/refdata/alliances/{slug}",
-              "GET /v1/refdata/alliances/{slug}/routes",
-              "GET /v1/refdata/types/{designator}",
-              "GET /v1/refdata/airports/{ident}"
+              "GET /v1/airlines",
+              "GET /v1/airlines/{icao}",
+              "GET /v1/airlines/{icao}/routes",
+              "GET /v1/airlines/{icao}/leg/{org}/{dst}",
+              "GET /v1/airlines/{icao}/schedule/{org}/{dst}",
+              "GET /v1/airlines/{icao}/countries",
+              "GET /v1/airlines/{icao}/fleet",
+              "GET /v1/airlines/{icao}/fleet/{designator}",
+              "GET /v1/alliances",
+              "GET /v1/alliances/{slug}",
+              "GET /v1/alliances/{slug}/routes",
+              "GET /v1/types/{designator}"
             ]
           }
         ]
