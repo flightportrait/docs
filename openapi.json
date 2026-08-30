@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "FlightPortrait network API",
-    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** Everything here is observation, never a published schedule or an official registry. Gaps mean the network's sources did not hear it, nothing more. History responses carry `coverage: \"observed\"` as a reminder.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
+    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** History is observation, never an official registry. Gaps mean the network's sources did not hear it, nothing more. Responses carry `coverage: \"observed\"` as a reminder. The one exception is the airport departures board, whose rows may be inferred from published timetables \u2014 each board row carries its own `source` (observed / published / both); a published row is not a receiver observation.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
     "version": "1.0.0"
   },
   "servers": [
@@ -577,14 +577,19 @@
                           "seen_pos": {
                             "type": "number",
                             "description": "Seconds since the last position."
+                          },
+                          "dst": {
+                            "type": "number",
+                            "description": "Distance from the query point, nautical miles."
                           }
                         },
                         "required": [
-                          "hex"
+                          "hex",
+                          "dst"
                         ],
-                        "description": "readsb passthrough dialect. Optional fields are absent when unknown, never null."
+                        "description": "readsb passthrough fields plus dst (distance, nm)."
                       },
-                      "description": "Snapshot aircraft within the radius, nearest first, plus dst (distance, nm)."
+                      "description": "Snapshot aircraft within the radius, nearest first."
                     },
                     "msg": {
                       "type": "string",
@@ -816,7 +821,7 @@
                       "description": "Operator airline when resolved."
                     },
                     "legs": {
-                      "description": "Observed legs, newest first. Empty array = not seen in the window; null = the log artifact is not loaded.",
+                      "description": "Observed legs, newest first, up to 200 (the most recent when an airframe has more). Empty array = not seen in the window; null = the log artifact is not loaded.",
                       "oneOf": [
                         {
                           "type": "array",
@@ -1008,6 +1013,30 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
           }
         },
         "x-stability": "stable"
@@ -1061,7 +1090,7 @@
                       ]
                     },
                     "legs": {
-                      "description": "Observed legs, busiest first, with typical local times when the inferred timetable knows them. Null = log artifact not loaded.",
+                      "description": "Observed legs, busiest first (top 10), with typical local times when the inferred timetable knows them. Null = log artifact not loaded.",
                       "oneOf": [
                         {
                           "type": "array",
@@ -1116,7 +1145,7 @@
                       ]
                     },
                     "aircraft": {
-                      "description": "Airframes flying it, busiest first. Null = log artifact not loaded.",
+                      "description": "Airframes flying it, busiest first (top 8). Null = log artifact not loaded.",
                       "oneOf": [
                         {
                           "type": "array",
@@ -1150,7 +1179,7 @@
                       ]
                     },
                     "recent": {
-                      "description": "Latest operations, newest first. Null = log artifact not loaded.",
+                      "description": "Latest operations, newest first (up to 10). Null = log artifact not loaded.",
                       "oneOf": [
                         {
                           "type": "array",
@@ -1527,11 +1556,11 @@
                           },
                           "source": {
                             "type": "string",
-                            "description": "observed | published | both."
+                            "description": "Provenance of THIS row: observed (from receivers), published (from a timetable), or both. Unlike the observed stats, a published row is not a receiver observation."
                           }
                         }
                       },
-                      "description": "Inferred typical departures, local time, dep-sorted."
+                      "description": "Inferred typical departures, local time, dep-sorted. Rows are a mix of observation and published timetable data; check each row's source."
                     },
                     "airlines": {
                       "type": "array",
@@ -1677,6 +1706,30 @@
           },
           "422": {
             "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3473,7 +3526,7 @@
                     },
                     "source": {
                       "type": "string",
-                      "description": "Public repository (map client and docs)."
+                      "description": "Public repository (map client and API service)."
                     },
                     "terms": {
                       "type": "string"
