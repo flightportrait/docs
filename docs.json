@@ -26,11 +26,19 @@
     "groups": [
       {
         "group": "FlightPortrait",
-        "pages": ["introduction", "how-it-works"]
+        "pages": [
+          "introduction",
+          "how-it-works"
+        ]
       },
       {
         "group": "Yours to run",
-        "pages": ["diy/overview", "diy/firmware", "diy/byos", "diy/byod"]
+        "pages": [
+          "diy/overview",
+          "diy/firmware",
+          "diy/byos",
+          "diy/byod"
+        ]
       },
       {
         "group": "The network",
@@ -83,7 +91,8 @@
               "GET /v1/alliances",
               "GET /v1/alliances/{slug}",
               "GET /v1/alliances/{slug}/routes",
-              "GET /v1/types/{designator}"
+              "GET /v1/types/{designator}",
+              "GET /v1/search"
             ]
           }
         ]
@@ -114,7 +123,10 @@
     }
   },
   "contextual": {
-    "options": ["copy", "download-spec"]
+    "options": [
+      "copy",
+      "download-spec"
+    ]
   },
   "redirects": [
     {

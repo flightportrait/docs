@@ -3537,6 +3537,142 @@
         "x-stability": "stable"
       }
     },
+    "/v1/search": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Search",
+        "description": "One box over registrations, hexes, flight numbers, airports and airlines. Prefix match, up to five per kind, exact codes first. Rate: 600 per 600 s (bucket `search`). Cache: 10 min edge.",
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "description": "What was typed.",
+              "title": "Q"
+            },
+            "description": "What was typed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "q": {
+                      "type": "string",
+                      "description": "The query as searched, trimmed and uppercased."
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "description": "aircraft, flight, airport or airline."
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "What to open: hex, callsign, airport code or airline ICAO."
+                          },
+                          "label": {
+                            "type": "string",
+                            "description": "The line to show."
+                          },
+                          "detail": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "A second line: type and operator, route count, city and country, IATA."
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "label",
+                          "detail"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "q",
+                    "results"
+                  ]
+                },
+                "example": {
+                  "q": "9V-SH",
+                  "results": [
+                    {
+                      "kind": "aircraft",
+                      "id": "76cd01",
+                      "label": "9V-SHA",
+                      "detail": "Airbus A350-900 \u00b7 Singapore Airlines"
+                    },
+                    {
+                      "kind": "aircraft",
+                      "id": "76cd02",
+                      "label": "9V-SHB",
+                      "detail": "Airbus A350-900 \u00b7 Singapore Airlines"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
