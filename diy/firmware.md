@@ -21,8 +21,7 @@ port, and accepts no incoming connection.
 
 ## The hardware it targets
 
-* ESP32-S3 (Seeed reTerminal E1004 first, then XIAO ESP32-S3 Plus on
-  the EE02 driver board)
+* The FlightPortrait frame: an ESP32-S3 driver board of our own design
 * 13.3 inch E Ink Spectra 6 panel, 1200 by 1600, portrait
 * Six inks: black, white, yellow, red, blue, green
 

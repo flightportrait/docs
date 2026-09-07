@@ -9,9 +9,9 @@ did.
 
 ## The parts
 
-* An ESP32-S3 board. The firmware targets the Seeed reTerminal E1004
-  (a complete enclosure with the panel already attached) and the XIAO
-  ESP32-S3 Plus on the EE02 driver board.
+* An ESP32-S3 board wired to the panel as the firmware's pin map
+  expects. The firmware targets the FlightPortrait frame's own driver
+  board; any ESP32-S3 with the same connections runs it.
 * A 13.3 inch E Ink Spectra 6 panel, 1200 by 1600. This is the only
   panel the panel format targets; smaller Spectra 6 sizes need their
   own driver work.
