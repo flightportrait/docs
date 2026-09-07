@@ -9,7 +9,7 @@ on the map, and on the wall, are what those receivers heard.
 - Map: [flightportrait.com/network](https://flightportrait.com/network)
 - API: [data.flightportrait.com](https://data.flightportrait.com)
   (no API key). [Reference](/api/reference)
-- Feed: [one line, or the Station](/network/feed)
+- Feed: [the Station](/network/feed)
 - Source: [github.com/flightportrait/network](https://github.com/flightportrait/network)
   (map, API, feed docs), [station](https://github.com/flightportrait/station),
   [rx](https://github.com/flightportrait/rx),
