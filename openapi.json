@@ -44,6 +44,13 @@
                     "generated_at": {
                       "type": "number",
                       "description": "Snapshot time, unix seconds UTC. Never older than 60 s (503 instead)."
+                    },
+                    "archive_through": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Newest day in the flight-history archive, ISO date. Null while the archive is unavailable."
                     }
                   },
                   "type": "object",
@@ -58,7 +65,8 @@
                   "aircraft_count": 7,
                   "aircraft_with_pos": 5,
                   "station_count": 1,
-                  "generated_at": 1787924061.0
+                  "generated_at": 1787924061.0,
+                  "archive_through": "2026-09-06"
                 }
               }
             }
@@ -3231,10 +3239,21 @@
                   "icao": "SIA",
                   "type": "A359",
                   "type_name": "Airbus A350-900",
+                  "window_days": 400,
                   "airframes": [
                     {
                       "hex": "76cd01",
-                      "reg": "9V-SHA"
+                      "reg": "9V-SHA",
+                      "legs": 212,
+                      "last_date": "2026-08-27",
+                      "last_org": "SIN",
+                      "last_dst": "LHR",
+                      "where": "LHR",
+                      "top_route": [
+                        "SIN",
+                        "LHR",
+                        41
+                      ]
                     }
                   ]
                 }
