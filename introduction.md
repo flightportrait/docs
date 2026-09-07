@@ -21,7 +21,7 @@ the map, and on the wall, are what those receivers heard.
 | Point a frame at your own server | [Bring your own server](/diy/byos) |
 | Build a frame from parts | [Build your own frame](/diy/byod) |
 | The live map | [The network](/network/overview) |
-| Feed with an antenna | [Feed the network](/network/feed) |
+| Feed with an antenna, or run the Station | [Feed the network](/network/feed) |
 | Use the flight data | [The public API](/api/reference) |
 
 ## Repositories
@@ -29,6 +29,11 @@ the map, and on the wall, are what those receivers heard.
 * [flightportrait/frame](https://github.com/flightportrait/frame):
   firmware, device protocol, and a reference server in stdlib Python.
 * [flightportrait/network](https://github.com/flightportrait/network):
-  the map, how to feed, and what we store about a station.
+  the map, the API, how to feed, and what we store about a station.
+* [flightportrait/station](https://github.com/flightportrait/station),
+  [rx](https://github.com/flightportrait/rx),
+  [mlatc](https://github.com/flightportrait/mlatc),
+  [mlatd](https://github.com/flightportrait/mlatd): the Station feeder
+  runtime, its radio, and the MLAT client and server.
 
 Questions these pages do not answer: hello@flightportrait.com.

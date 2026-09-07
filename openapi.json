@@ -199,6 +199,14 @@
                           "seen_pos": {
                             "type": "number",
                             "description": "Seconds since the last position."
+                          },
+                          "baro_rate": {
+                            "type": "integer",
+                            "description": "Vertical rate, feet per minute, positive climbing."
+                          },
+                          "emergency": {
+                            "type": "string",
+                            "description": "Transponder emergency state: none, general, lifeguard, minfuel, nordo, unlawful, downed, reserved."
                           }
                         },
                         "type": "object",
@@ -232,7 +240,9 @@
                       "category": "A5",
                       "squawk": "2136",
                       "seen": 0.2,
-                      "seen_pos": 1.1
+                      "seen_pos": 1.1,
+                      "baro_rate": 1856,
+                      "emergency": "none"
                     }
                   ]
                 }
@@ -577,6 +587,14 @@
                           "seen_pos": {
                             "type": "number",
                             "description": "Seconds since the last position."
+                          },
+                          "baro_rate": {
+                            "type": "integer",
+                            "description": "Vertical rate, feet per minute, positive climbing."
+                          },
+                          "emergency": {
+                            "type": "string",
+                            "description": "Transponder emergency state: none, general, lifeguard, minfuel, nordo, unlawful, downed, reserved."
                           },
                           "dst": {
                             "type": "number",
@@ -1390,7 +1408,7 @@
           "History"
         ],
         "summary": "Airport",
-        "description": "One airport, IATA or ICAO code: registry identity, observed totals and busiest routes, and the inferred departures board in the airport's LOCAL time. Circuits excluded. observed is null when the log artifact is not loaded. 404 if unknown. Rate: 120 per 600 s (bucket `airport`). Cache: 1 h edge.",
+        "description": "One airport, IATA or ICAO code: registry identity, observed totals and busiest routes, and the inferred departures and arrivals boards in the airport's LOCAL time. Circuits excluded. observed is null when the log artifact is not loaded. 404 if unknown. Rate: 120 per 600 s (bucket `airport`). Cache: 1 h edge.",
         "operationId": "airport",
         "parameters": [
           {
@@ -1562,6 +1580,54 @@
                       },
                       "description": "Inferred typical departures, local time, dep-sorted. Rows are a mix of observation and published timetable data; check each row's source."
                     },
+                    "arrivals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "flight": {
+                            "type": "string",
+                            "description": "Marketed number when known, else the callsign."
+                          },
+                          "org": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Origin, IATA."
+                          },
+                          "dep": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "HH:MM, local at origin."
+                          },
+                          "arr": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "HH:MM, local at this airport."
+                          },
+                          "type": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "flights": {
+                            "type": "integer",
+                            "description": "Observation count behind the row."
+                          },
+                          "source": {
+                            "type": "string",
+                            "description": "observed, published, or both."
+                          }
+                        }
+                      },
+                      "description": "Inferred typical arrivals, this airport's local time, arr-sorted. Same provenance rules as board."
+                    },
                     "airlines": {
                       "type": "array",
                       "items": {
@@ -1599,6 +1665,7 @@
                     "ident",
                     "observed",
                     "board",
+                    "arrivals",
                     "airlines",
                     "times",
                     "window_days",
@@ -1636,6 +1703,17 @@
                       "arr": "15:10",
                       "type": "A359",
                       "flights": 12,
+                      "source": "observed"
+                    }
+                  ],
+                  "arrivals": [
+                    {
+                      "flight": "SQ317",
+                      "org": "LHR",
+                      "dep": "11:00",
+                      "arr": "06:55",
+                      "type": "A359",
+                      "flights": 11,
                       "source": "observed"
                     }
                   ],

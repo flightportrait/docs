@@ -40,7 +40,7 @@ day and it runs for months on one charge, ask for one every few
 minutes and it runs for weeks. Either way, most of the time there is
 nothing on your network to talk to.
 
-## What actually travels
+## What travels
 
 When the frame calls, the conversation is small enough to write down
 in full.
@@ -79,5 +79,5 @@ The frame's [firmware is open source](https://github.com/flightportrait/frame),
 and the [protocol it speaks](https://github.com/flightportrait/frame/blob/main/docs/PROTOCOL.md)
 is published in full: every request, every field. If you'd rather not
 talk to our server at all, you can
-[point your frame at your own](/diy/byos): it is a supported,
-documented path, not a hack.
+[point your frame at your own](/diy/byos). It is a supported,
+documented path.

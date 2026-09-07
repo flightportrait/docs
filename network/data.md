@@ -5,7 +5,8 @@ description: "What is served, under which licenses."
 
 | What | License |
 | --- | --- |
-| Map and feeder docs | Apache-2.0 ([flightportrait/network](https://github.com/flightportrait/network)) |
+| Map, API and feeder docs | Apache-2.0 ([flightportrait/network](https://github.com/flightportrait/network)) |
+| Station runtime, radio, MLAT client and server | AGPL-3.0 ([station](https://github.com/flightportrait/station), [rx](https://github.com/flightportrait/rx), [mlatc](https://github.com/flightportrait/mlatc), [mlatd](https://github.com/flightportrait/mlatd)) |
 | Firmware and device protocol | Apache-2.0 ([flightportrait/frame](https://github.com/flightportrait/frame)) |
 | Data from the API | ODbL 1.0 |
 | Basemap tiles | OpenFreemap |
@@ -31,5 +32,5 @@ link satisfy the license.
 ## Stations
 
 Locations are rounded to about 11 km, from coverage. IPs are not
-stored. The full UUID is held by the feeder; the server stores a
-hash.
+stored. The full key is held by the feeder; the server stores a
+hash. [Privacy policy](https://flightportrait.com/network/privacy).

@@ -5,7 +5,8 @@ welcome as pull requests.
 
 - Markdown pages; nav in `docs.json`.
 - `openapi.json` is generated from the API (same Python as the API tests):
-  `python network/api/export_openapi.py docs-site/openapi.json`
+  `python api/export_openapi.py openapi.json` from a checkout of
+  flightportrait/network
 - Check claims against the code: firmware in
   [flightportrait/frame](https://github.com/flightportrait/frame),
   map and feed in

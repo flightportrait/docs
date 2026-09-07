@@ -4,8 +4,8 @@ description: "Point a stock frame at any server that speaks three endpoints."
 ---
 
 Keep the frame, replace the cloud. This is a supported, documented
-path, not a hack: a stock frame can be re-pointed at any server that
-implements three HTTPS endpoints, with no toolchain and no reflash.
+path: a stock frame can be re-pointed at any server that implements
+three HTTPS endpoints, with no toolchain and no reflash.
 
 ## How the frame changes servers
 
