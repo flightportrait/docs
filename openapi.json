@@ -3882,6 +3882,13 @@
                               "null"
                             ],
                             "description": "How far the missing end is, from the time the airframe takes to come back. Null until a few rotations were seen."
+                          },
+                          "suggested": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Airports the evidence allows for the missing end, best first: at the rotation's distance, within the type's range, along the last heard track, ranked by how much the airline is seen flying there. Empty until the rotation is known."
                           }
                         }
                       }
@@ -3915,7 +3922,11 @@
                         "lon": 106.92,
                         "track": 21
                       },
-                      "rotation_km": 3150
+                      "rotation_km": 3150,
+                      "suggested": [
+                        "TFU",
+                        "CTU"
+                      ]
                     }
                   ],
                   "coverage": "observed"
@@ -4097,6 +4108,13 @@
                       ],
                       "description": "How far the missing end is, from the time the airframe takes to come back. Null until a few rotations were seen."
                     },
+                    "suggested": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Airports the evidence allows for the missing end, best first: at the rotation's distance, within the type's range, along the last heard track, ranked by how much the airline is seen flying there. Empty until the rotation is known."
+                    },
                     "catalog": {
                       "description": "The community answer in force, if any: the whole route, IATA.",
                       "oneOf": [
@@ -4160,6 +4178,10 @@
                     "track": 21
                   },
                   "rotation_km": 3150,
+                  "suggested": [
+                    "TFU",
+                    "CTU"
+                  ],
                   "answers": []
                 }
               }
