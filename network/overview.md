@@ -22,9 +22,9 @@ not heard.
 
 Where coverage ends, a route stays half known. Those are listed at
 [flightportrait.com/network/gaps.html](https://flightportrait.com/network/gaps.html)
-and `GET /v1/gaps`; anyone who knows the other end can answer with
-`POST /v1/contributions`. Answers are checked against what was
-observed and reviewed before a flight's page shows them, with their
+and `GET /v1/gaps`; anyone who knows the other end can answer on that
+page. Answers are checked against what was observed, corroborated ones
+enter the catalog, and a flight's page shows the route with its
 provenance (`route_source`). Observation always wins.
 
 [Licenses and privacy](/network/data).
