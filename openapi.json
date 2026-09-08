@@ -3822,6 +3822,20 @@
                             ],
                             "description": "The missing end's leading code when observation saw it too rarely to settle it."
                           },
+                          "chain": {
+                            "description": "Every known stop in order when the callsign is a chain with one end unseen; the missing end goes before or after it. Null for a single leg.",
+                            "oneOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "type": {
                             "type": [
                               "string",
@@ -4022,6 +4036,20 @@
                       ],
                       "description": "The missing end's leading code when observation saw it too rarely to settle it."
                     },
+                    "chain": {
+                      "description": "Every known stop in order when the callsign is a chain with one end unseen; the missing end goes before or after it. Null for a single leg.",
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "type": {
                       "type": [
                         "string",
@@ -4070,16 +4098,16 @@
                       "description": "How far the missing end is, from the time the airframe takes to come back. Null until a few rotations were seen."
                     },
                     "catalog": {
-                      "description": "The community answer in force, if any.",
+                      "description": "The community answer in force, if any: the whole route, IATA.",
                       "oneOf": [
                         {
                           "type": "object",
                           "properties": {
-                            "origin": {
-                              "type": "string"
-                            },
-                            "dest": {
-                              "type": "string"
+                            "route": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             },
                             "valid_from": {
                               "type": "string"
