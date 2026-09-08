@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "FlightPortrait network API",
-    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** History is observation, never an official registry. Gaps mean the network's sources did not hear it, nothing more. Responses carry `coverage: \"observed\"` as a reminder. The one exception is the airport departures board, whose rows may be inferred from published timetables \u2014 each board row carries its own `source` (observed / published / both); a published row is not a receiver observation.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
+    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** History is observation, never an official registry. Gaps mean the network's sources did not hear it, nothing more. Responses carry `coverage: \"observed\"` as a reminder. The one exception is the airport departures board, whose rows may be inferred from published timetables \u2014 each board row carries its own `source` (observed / published / both); a published row is not a receiver observation. Likewise a flight's `route_source`: `observed` when both ends were seen, `observed+catalog` when the community supplied the end coverage never reached, `catalog` when it supplied both. Catalog answers are reviewed before they are served, and observation outranks them whenever it speaks.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
     "version": "1.0.0"
   },
   "servers": [
@@ -1102,7 +1102,7 @@
                       "type": "string"
                     },
                     "route": {
-                      "description": "[origin, ...via, destination], IATA, from the derived routes artifact. Null when unknown or the artifact is not loaded.",
+                      "description": "[origin, ...via, destination], IATA, from the derived routes artifact, else from the community catalog. Null when unknown or the artifact is not loaded.",
                       "oneOf": [
                         {
                           "type": "array",
@@ -1114,6 +1114,13 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "route_source": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "observed, observed+catalog, or catalog. Null when route is null."
                     },
                     "legs": {
                       "description": "Observed legs, busiest first (top 10), with typical local times when the inferred timetable knows them. Null = log artifact not loaded.",
@@ -1270,6 +1277,7 @@
                     "SIN",
                     "LHR"
                   ],
+                  "route_source": "observed",
                   "legs": [
                     {
                       "org": "SIN",
@@ -1464,6 +1472,13 @@
                         "null"
                       ],
                       "description": "OurAirports kind (large_airport, ...)."
+                    },
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "commercial, general, military, or closed."
                     },
                     "lat": {
                       "type": [
@@ -3699,6 +3714,653 @@
         "x-stability": "map"
       }
     },
+    "/v1/gaps": {
+      "get": {
+        "tags": [
+          "Contributions"
+        ],
+        "summary": "Open questions",
+        "description": "Callsigns whose route observation settled at one end only, most-seen first. Each row says which end is missing, which is known, and where the aircraft was last heard. Answer one with POST /v1/contributions. Rate: 300 per 600 s (bucket `gaps`). Cache: 10 min edge.",
+        "operationId": "gaps",
+        "parameters": [
+          {
+            "name": "airline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 3
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ICAO airline prefix.",
+              "title": "Airline"
+            },
+            "description": "ICAO airline prefix."
+          },
+          {
+            "name": "side",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(origin|dest)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "description": "Rows matching the filters."
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "gaps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "callsign": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "The missing end: origin or dest."
+                          },
+                          "known": {
+                            "type": "string",
+                            "description": "The settled end, IATA."
+                          },
+                          "hint": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The missing end's leading code when observation saw it too rarely to settle it."
+                          },
+                          "n_recent": {
+                            "type": "integer",
+                            "description": "Sightings in the last 90 days."
+                          },
+                          "last_seen": {
+                            "type": "string",
+                            "description": "Last date observed, YYYY-MM-DD."
+                          },
+                          "last_heard": {
+                            "description": "Where the most recent truncated leg was last heard, with its track in degrees true. Null when unknown.",
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "lat": {
+                                    "type": "number"
+                                  },
+                                  "lon": {
+                                    "type": "number"
+                                  },
+                                  "track": {
+                                    "type": [
+                                      "integer",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "coverage": {
+                      "type": "string",
+                      "description": "Always \"observed\": evidence from our receivers and open trace archives, never a published schedule or registry.",
+                      "const": "observed"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "offset",
+                    "gaps",
+                    "coverage"
+                  ]
+                },
+                "example": {
+                  "total": 1,
+                  "offset": 0,
+                  "gaps": [
+                    {
+                      "callsign": "SIA842",
+                      "side": "dest",
+                      "known": "SIN",
+                      "n_recent": 13,
+                      "last_seen": "2026-09-06",
+                      "last_heard": {
+                        "lat": 12.41,
+                        "lon": 106.92,
+                        "track": 21
+                      }
+                    }
+                  ],
+                  "coverage": "observed"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/gaps/{callsign}": {
+      "get": {
+        "tags": [
+          "Contributions"
+        ],
+        "summary": "One question",
+        "description": "The open question for one callsign, with the catalog answer in force if there is one. 404 when observation has no question for it. Rate: 300 per 600 s (bucket `gaps`). Cache: 10 min edge.",
+        "operationId": "gap",
+        "parameters": [
+          {
+            "name": "callsign",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Callsign or flight ident, 2-12 alphanumerics.",
+              "title": "Callsign"
+            },
+            "description": "Callsign or flight ident, 2-12 alphanumerics."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "callsign": {
+                      "type": "string"
+                    },
+                    "side": {
+                      "type": "string",
+                      "description": "The missing end: origin or dest."
+                    },
+                    "known": {
+                      "type": "string",
+                      "description": "The settled end, IATA."
+                    },
+                    "hint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The missing end's leading code when observation saw it too rarely to settle it."
+                    },
+                    "n_recent": {
+                      "type": "integer",
+                      "description": "Sightings in the last 90 days."
+                    },
+                    "last_seen": {
+                      "type": "string",
+                      "description": "Last date observed, YYYY-MM-DD."
+                    },
+                    "last_heard": {
+                      "description": "Where the most recent truncated leg was last heard, with its track in degrees true. Null when unknown.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lon": {
+                              "type": "number"
+                            },
+                            "track": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "catalog": {
+                      "description": "The community answer in force, if any.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "origin": {
+                              "type": "string"
+                            },
+                            "dest": {
+                              "type": "string"
+                            },
+                            "valid_from": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "callsign": "SIA842",
+                  "side": "dest",
+                  "known": "SIN",
+                  "n_recent": 13,
+                  "last_seen": "2026-09-06",
+                  "last_heard": {
+                    "lat": 12.41,
+                    "lon": 106.92,
+                    "track": 21
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/contributions": {
+      "post": {
+        "tags": [
+          "Contributions"
+        ],
+        "summary": "Answer a question",
+        "description": "Answer one open question: the callsign and the missing airport (IATA or ICAO). The answer is checked against what was observed and held for review; it is served only once approved into the catalog. 422 when the callsign has no open question or the airport is not a commercial field. Rate: 30 per 600 s (bucket `contribute`).",
+        "operationId": "contribute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "pending",
+                      "description": "Always pending on submission."
+                    },
+                    "callsign": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "dest": {
+                      "type": "string"
+                    },
+                    "checks": {
+                      "properties": {
+                        "known_end": {
+                          "type": "string",
+                          "description": "pass / fail: the end you gave for the settled side matches observation."
+                        },
+                        "not_same": {
+                          "type": "string"
+                        },
+                        "airport": {
+                          "type": "string",
+                          "description": "The missing end is a commercial airport we know."
+                        },
+                        "observation": {
+                          "type": "string",
+                          "description": "pass / fail / skip: agrees with the rare observation of that end."
+                        },
+                        "corridor": {
+                          "type": "string",
+                          "description": "pass / fail / skip: the claimed end lies along the track the aircraft was last heard on."
+                        },
+                        "agreeing": {
+                          "type": "integer",
+                          "description": "Earlier answers that say the same."
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "callsign",
+                    "origin",
+                    "dest",
+                    "checks"
+                  ]
+                },
+                "example": {
+                  "id": 17,
+                  "status": "pending",
+                  "callsign": "SIA842",
+                  "origin": "SIN",
+                  "dest": "TFU",
+                  "checks": {
+                    "known_end": "pass",
+                    "not_same": "pass",
+                    "airport": "pass",
+                    "observation": "skip",
+                    "corridor": "pass",
+                    "agreeing": 0
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -3824,6 +4486,89 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "RouteAnswer": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^route$",
+            "title": "Kind",
+            "default": "route"
+          },
+          "callsign": {
+            "type": "string",
+            "maxLength": 12,
+            "minLength": 2,
+            "title": "Callsign"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "dest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dest"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 280
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "callsign"
+        ],
+        "title": "RouteAnswer"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3882,6 +4627,10 @@
     {
       "name": "Reference",
       "description": "Airlines, alliances, types."
+    },
+    {
+      "name": "Contributions",
+      "description": "What observation could not settle, and the community answers to it."
     },
     {
       "name": "Meta",
