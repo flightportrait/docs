@@ -4361,6 +4361,100 @@
         "x-stability": "stable"
       }
     },
+    "/v1/contributors": {
+      "get": {
+        "tags": [
+          "Contributions"
+        ],
+        "summary": "Contributors",
+        "description": "Who answered, by approved answers, most first. Only answers that made it into the catalog count, and only contributors who gave a name. Rate: 300 per 600 s (bucket `gaps`). Cache: 10 min edge.",
+        "operationId": "contributors",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "answers": {
+                      "type": "integer",
+                      "description": "Approved answers, all contributors."
+                    },
+                    "contributors": {
+                      "items": {
+                        "properties": {
+                          "handle": {
+                            "type": "string"
+                          },
+                          "answers": {
+                            "type": "integer",
+                            "description": "Approved answers."
+                          },
+                          "latest": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Date of the latest, YYYY-MM-DD."
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array",
+                      "description": "Most answers first, top 200."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "answers",
+                    "contributors"
+                  ]
+                },
+                "example": {
+                  "answers": 41,
+                  "contributors": [
+                    {
+                      "handle": "spotter_sg",
+                      "answers": 23,
+                      "latest": "2026-09-14"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -4549,6 +4643,18 @@
               }
             ],
             "title": "Note"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
           },
           "contact": {
             "anyOf": [
