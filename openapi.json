@@ -2751,6 +2751,140 @@
         "x-stability": "stable"
       }
     },
+    "/v1/setup/beacon": {
+      "get": {
+        "tags": [
+          "Stations"
+        ],
+        "summary": "Stations waiting on my network",
+        "description": "The Stations waiting for setup on the caller's own network (the same public address), newest first, each with the address of its setup page. Empty when there are none. Rate: 120 per 600 s (bucket `beacon_find`). Never cached.",
+        "operationId": "setup_beacon_get",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "stations": [
+                    {
+                      "url": "http://192.168.1.23:8654/",
+                      "name": "station",
+                      "seen_s": 12
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      },
+      "post": {
+        "tags": [
+          "Stations"
+        ],
+        "summary": "Station waiting for setup",
+        "description": "Sent by a Station that has not been set up yet: its address on the home network, so the join page on a phone on that network can open its setup page. Held in memory for 10 minutes under a hash of the caller's public address; never stored. Only private IPv4 addresses are accepted. Rate: 30 per 600 s (bucket `beacon`).",
+        "operationId": "setup_beacon_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Beacon"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
     "/v1/airlines": {
       "get": {
         "tags": [
@@ -5190,6 +5324,29 @@
   },
   "components": {
     "schemas": {
+      "Beacon": {
+        "properties": {
+          "lan": {
+            "type": "string",
+            "title": "Lan"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port",
+            "default": 8654
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "station"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lan"
+        ],
+        "title": "Beacon"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
