@@ -59,6 +59,7 @@
               "GET /v1/now",
               "GET /v1/aircraft",
               "GET /v1/trace/{hex}",
+              "GET /v1/estimated",
               "GET /v2/point/{lat}/{lon}/{radius}"
             ]
           },
@@ -67,7 +68,8 @@
             "pages": [
               "GET /v1/airframes/{hex}",
               "GET /v1/flights/{callsign}",
-              "GET /v1/airports/{code}"
+              "GET /v1/airports/{code}",
+              "GET /v1/routes"
             ]
           },
           {
@@ -88,11 +90,20 @@
               "GET /v1/airlines/{icao}/countries",
               "GET /v1/airlines/{icao}/fleet",
               "GET /v1/airlines/{icao}/fleet/{designator}",
+              "GET /v1/airlines/{icao}/airframes",
               "GET /v1/alliances",
               "GET /v1/alliances/{slug}",
               "GET /v1/alliances/{slug}/routes",
               "GET /v1/types/{designator}",
               "GET /v1/search"
+            ]
+          },
+          {
+            "group": "Contributions",
+            "pages": [
+              "GET /v1/gaps",
+              "GET /v1/gaps/{callsign}",
+              "GET /v1/contributors"
             ]
           }
         ]

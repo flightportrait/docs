@@ -18,7 +18,9 @@ on the map, and on the wall, are what those receivers heard.
 
 Live positions come from receivers on the network. Routes and
 airframe logs come from openly licensed traces. A gap means it was
-not heard.
+not heard. Where a cruising aircraft drops out of range, the map can
+show where it most likely is for up to 15 minutes, in grey and marked
+as estimated; that layer is off until you turn it on.
 
 Where coverage ends, a route stays half known. Those are listed at
 [flightportrait.com/network/gaps.html](https://flightportrait.com/network/gaps.html)
@@ -27,4 +29,4 @@ page. Answers are checked against what was observed, corroborated ones
 enter the catalog, and a flight's page shows the route with its
 provenance (`route_source`). Observation always wins.
 
-[Licenses and privacy](/network/data).
+[Licenses and privacy](/network/data). [Credits](https://flightportrait.com/network/credits.html).

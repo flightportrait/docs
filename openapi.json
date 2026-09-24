@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "FlightPortrait network API",
-    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** History is observation, never an official registry. Gaps mean the network's sources did not hear it, nothing more. Responses carry `coverage: \"observed\"` as a reminder. The one exception is the airport departures board, whose rows may be inferred from published timetables \u2014 each board row carries its own `source` (observed / published / both); a published row is not a receiver observation. Likewise a flight's `route_source`: `observed` when both ends were seen, `observed+catalog` when the community supplied the end coverage never reached, `catalog` when it supplied both. Catalog answers are checked against observation and reviewed before they are served, and observation outranks them whenever it speaks. This API is read-only; answers go to the contribution door at contribute.flightportrait.com.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\".\nTerms: https://flightportrait.com/network/terms",
+    "description": "Open data from the FlightPortrait receiver network. No API key.\n\n**Stability.** Operations marked `x-stability: stable` only ever gain fields; names and types are frozen. Operations marked `x-stability: map` exist for the first-party map and can change with it.\n\n**Field dialects.** `/v1/aircraft` and `/v2/point` pass readsb's wire fields through unchanged (`hex`, `t`, `r`, `gs`, ...) so ecosystem tooling works as-is. Every other resource uses full words: `reg`, `type`, `org`, `dst`. Airport codes in history resources are IATA; `/v1/airports/{code}` accepts IATA or ICAO. Event times are unix seconds UTC; registry timestamps are ISO 8601 UTC; board and schedule times are HH:MM in the origin airport's local time.\n\n**Data honesty.** History is observation, never an official registry. Gaps mean the network's sources did not hear it, nothing more. Responses carry `coverage: \"observed\"` as a reminder. The one exception is the airport departures board, whose rows may be inferred from published timetables \u2014 each board row carries its own `source` (observed / published / both); a published row is not a receiver observation. Likewise a flight's `route_source`: `observed` when both ends were seen, `observed+catalog` when the community supplied the end coverage never reached, `catalog` when it supplied both. Catalog answers are checked against observation and reviewed before they are served, and observation outranks them whenever it speaks. This API is read-only; answers go to the contribution door at contribute.flightportrait.com.\n\n**Errors.** Every non-200 body is `{\"error\": <code>, \"detail\": <human text>}` with `Cache-Control: no-store`. 404 `not_found` / `not_observed`, 422 `invalid_request`, 429 `rate_limited` (with `Retry-After` and `RateLimit-*` headers), 503 `stale_snapshot` (live snapshot older than 60 s) or `artifact_unavailable` (a history artifact is not loaded).\n\n**Rate limits.** Per IP, per bucket, over a 600 second window; each operation notes its bucket and default limit. 429 means wait for `Retry-After` seconds.\n\nData is ODbL 1.0. Credit \"FlightPortrait network feeders\" and link the credits page, which lists every source the data draws on and the credit each one asks for; republishing carries them too.\nCredits: https://flightportrait.com/network/credits.html\nTerms: https://flightportrait.com/network/terms",
     "version": "1.0.0"
   },
   "servers": [
@@ -133,21 +133,53 @@
           "Live"
         ],
         "summary": "Aircraft",
-        "description": "Aircraft the network hears right now, readsb field dialect. 503 if the snapshot is older than 60 seconds. Rate: 300 per 600 s (bucket `aircraft`). Cache: 10 s edge, 5 s browser.",
+        "description": "Aircraft the network hears right now, readsb field dialect. With `bbox=minLon,minLat,maxLon,maxLat` only the aircraft with a position inside it (a box whose west edge is east of its east edge crosses the antimeridian); `total` stays the whole network. 503 if the snapshot is older than 60 seconds. Rate: 300 per 600 s (bucket `aircraft`). Cache: 10 s edge, 5 s browser.",
         "operationId": "aircraft",
+        "parameters": [
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "minLon,minLat,maxLon,maxLat; only aircraft with a position inside.",
+              "title": "Bbox"
+            },
+            "description": "minLon,minLat,maxLon,maxLat; only aircraft with a position inside."
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "object",
                   "properties": {
                     "generated_at": {
                       "type": "number",
                       "description": "Snapshot time, unix seconds UTC."
                     },
+                    "total": {
+                      "type": "integer",
+                      "description": "Aircraft in the whole snapshot, before any bbox filter."
+                    },
+                    "with_position": {
+                      "type": "integer",
+                      "description": "Of those, aircraft with a position fix."
+                    },
                     "aircraft": {
+                      "type": "array",
                       "items": {
+                        "type": "object",
                         "properties": {
                           "hex": {
                             "type": "string",
@@ -174,6 +206,7 @@
                             "description": "WGS84 degrees."
                           },
                           "alt_baro": {
+                            "description": "Barometric altitude, feet, or the string \"ground\".",
                             "oneOf": [
                               {
                                 "type": "integer"
@@ -181,8 +214,7 @@
                               {
                                 "const": "ground"
                               }
-                            ],
-                            "description": "Barometric altitude, feet, or the string \"ground\"."
+                            ]
                           },
                           "gs": {
                             "type": "number",
@@ -217,23 +249,24 @@
                             "description": "Transponder emergency state: none, general, lifeguard, minfuel, nordo, unlawful, downed, reserved."
                           }
                         },
-                        "type": "object",
                         "required": [
                           "hex"
                         ],
                         "description": "readsb passthrough dialect. Optional fields are absent when unknown, never null."
-                      },
-                      "type": "array"
+                      }
                     }
                   },
-                  "type": "object",
                   "required": [
                     "generated_at",
+                    "total",
+                    "with_position",
                     "aircraft"
                   ]
                 },
                 "example": {
                   "generated_at": 1787924061.0,
+                  "total": 191,
+                  "with_position": 184,
                   "aircraft": [
                     {
                       "hex": "76cd06",
@@ -251,6 +284,175 @@
                       "seen_pos": 1.1,
                       "baro_rate": 1856,
                       "emergency": "none"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
+    "/v1/estimated": {
+      "get": {
+        "tags": [
+          "Live"
+        ],
+        "summary": "Estimated positions",
+        "description": "Aircraft the network stopped hearing while cruising, drawn where they most likely are: flown on from the last observed position toward the destination their callsign's route names, at the last observed speed (holding the last track 10 minutes, then turning toward the destination). Every entry is an estimate, never an observation: `estimated` is always true, `last_seen` is the last real position, `alt_baro` and `gs` are the last observed values. An aircraft appears 90 s after it was last heard and leaves when it is heard again, nears its destination, or its flight time runs out. Kept in memory, never archived or exported. Scored every night against the previous day's real coverage gaps; `accuracy` is the latest night's result for the method in use (median error by gap length), null before the first. Rate: 300 per 600 s (bucket `estimated`). Cache: 15 s edge, 10 s browser.",
+        "operationId": "estimated",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "generated_at": {
+                      "type": "number",
+                      "description": "Unix seconds the estimates are for."
+                    },
+                    "method": {
+                      "type": "string",
+                      "description": "How positions are estimated."
+                    },
+                    "accuracy": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "The latest night's measured accuracy: day, n, median_km, by_gap_min."
+                    },
+                    "aircraft": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array",
+                      "description": "Estimated aircraft; every entry is an estimate, never an observation."
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "generated_at",
+                    "method",
+                    "aircraft"
+                  ]
+                },
+                "example": {
+                  "generated_at": 1790140000.0,
+                  "method": "converge-to-destination",
+                  "accuracy": {
+                    "day": "2026-09-22",
+                    "n": 208,
+                    "median_km": 2.3,
+                    "by_gap_min": {
+                      "5-15": {
+                        "n": 153,
+                        "median_km": 1.4
+                      },
+                      "60-120": {
+                        "n": 43,
+                        "median_km": 76.9
+                      }
+                    }
+                  },
+                  "aircraft": [
+                    {
+                      "hex": "4ca8e4",
+                      "flight": "RYR1153",
+                      "t": "B738",
+                      "r": "9H-QDS",
+                      "category": "A3",
+                      "lat": 43.1021,
+                      "lon": 11.9403,
+                      "track": 312.4,
+                      "alt_baro": 36000,
+                      "gs": 452.0,
+                      "estimated": true,
+                      "last_seen": {
+                        "at": 1790139412.0,
+                        "lat": 42.2,
+                        "lon": 13.1
+                      },
+                      "destination": "PSA",
+                      "eta": 1790140700
                     }
                   ]
                 }
@@ -284,33 +486,9 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
-                    },
-                    "detail": {
-                      "type": "string",
-                      "description": "Human-readable explanation."
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "error",
-                    "detail"
-                  ]
-                }
-              }
-            }
           }
         },
-        "x-stability": "stable"
+        "x-stability": "map"
       }
     },
     "/v1/trace/{hex}": {
@@ -386,6 +564,55 @@
                         ]
                       },
                       "description": "[t, lat, lon, alt_baro, track], oldest first."
+                    },
+                    "departure": {
+                      "description": "When and where this flight took off, from the day's trace: present when the network heard the take-off (from the ground or below 5,000 ft). Null when first heard aloft.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "at": {
+                              "type": "number",
+                              "description": "Unix seconds UTC."
+                            },
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lon": {
+                              "type": "number"
+                            },
+                            "alt_ft": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "arrival": {
+                      "description": "When and where it landed, when the trace ends on the ground.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "at": {
+                              "type": "number",
+                              "description": "Unix seconds UTC."
+                            },
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lon": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -410,7 +637,13 @@
                       6325,
                       85.4
                     ]
-                  ]
+                  ],
+                  "departure": {
+                    "at": 1787923500.0,
+                    "lat": 1.36,
+                    "lon": 103.99,
+                    "alt_ft": 425
+                  }
                 }
               }
             }
@@ -832,6 +1065,13 @@
                       ],
                       "description": "Build year."
                     },
+                    "country": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "State of registration, ISO 3166-1 alpha-2, from the ICAO address block the hex belongs to. Null for unallocated and ICAO blocks."
+                    },
                     "source": {
                       "type": [
                         "string",
@@ -918,6 +1158,13 @@
                       "type": "string",
                       "description": "Always \"observed\": evidence from our receivers and open trace archives, never a published schedule or registry.",
                       "const": "observed"
+                    },
+                    "history": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "The lifetime record behind this hex: airframe_id, msn, built_year, manufacturer, registry (what a registry states, newest per field: model, engine, certificate_date, airworthiness_date, registry_status, owner, registration, source; null without one), first_observed, last_observed, and dated spells (hexes, registrations, operators; each with from, to, legs, source) plus public events, newest first (kind, at, lat, lon, detail, source). Observed spells and events come from the network's own evidence and say what it saw: first_observed is when the network first heard the airframe, not a delivery; not_observed is our silence, not storage. Null when no record exists."
                     }
                   },
                   "required": [
@@ -936,6 +1183,7 @@
                   "operator": "Singapore Airlines",
                   "operator_icao": "SIA",
                   "year": 2019,
+                  "country": "SG",
                   "source": "tar1090",
                   "airline": {
                     "icao": "SIA",
@@ -959,7 +1207,52 @@
                     }
                   ],
                   "window_days": 60,
-                  "coverage": "observed"
+                  "coverage": "observed",
+                  "history": {
+                    "airframe_id": 4211,
+                    "first_observed": "2025-08-28",
+                    "last_observed": "2026-09-21",
+                    "hexes": [
+                      {
+                        "hex": "76cd06",
+                        "from": "2025-08-28",
+                        "to": "2026-09-21",
+                        "legs": 812,
+                        "source": "observed"
+                      }
+                    ],
+                    "registrations": [
+                      {
+                        "reg": "9V-SHF",
+                        "from": "2025-08-28",
+                        "to": "2026-09-21",
+                        "legs": 812,
+                        "source": "observed"
+                      }
+                    ],
+                    "operators": [
+                      {
+                        "icao": "SIA",
+                        "name": "Singapore Airlines",
+                        "from": "2025-08-28",
+                        "to": "2026-09-21",
+                        "legs": 809,
+                        "source": "observed"
+                      }
+                    ],
+                    "events": [
+                      {
+                        "kind": "not_observed",
+                        "at": "2026-02-03T00:00:00+00:00",
+                        "detail": {
+                          "last_seen": "2026-02-02",
+                          "seen_again": "2026-03-10",
+                          "days": 35
+                        },
+                        "source": "observed"
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -1068,6 +1361,152 @@
         "x-stability": "stable"
       }
     },
+    "/v1/routes": {
+      "get": {
+        "tags": [
+          "History",
+          "History"
+        ],
+        "summary": "Routes, bulk",
+        "description": "Derived routes for the callsigns of a list on screen, up to 80 in one call: observed routes first, the community catalog where they are silent. Null for a callsign never observed. Rate: 120 per 600 s (bucket `routes`). Cache: 1 h edge.",
+        "operationId": "routes_bulk",
+        "parameters": [
+          {
+            "name": "cs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 1100,
+              "description": "Comma-separated callsigns, up to 80.",
+              "title": "Cs"
+            },
+            "description": "Comma-separated callsigns, up to 80."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "routes": {
+                      "description": "Callsign (upper case) to [origin, ...via, destination] IATA, or null when unknown. Every requested callsign is a key.",
+                      "type": "object",
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "routes": {
+                    "SQ322": [
+                      "SIN",
+                      "LHR"
+                    ],
+                    "BAW9": [
+                      "LHR",
+                      "SIN"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live snapshot older than 60 seconds (stale_snapshot) or a required history artifact is not loaded (artifact_unavailable). Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "stable"
+      }
+    },
     "/v1/flights/{callsign}": {
       "get": {
         "tags": [
@@ -1099,7 +1538,15 @@
                   "type": "object",
                   "properties": {
                     "callsign": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "The operating callsign the record is for."
+                    },
+                    "marketed": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The marketed number the request used when it differed (BA272 for BAW272)."
                     },
                     "route": {
                       "description": "[origin, ...via, destination], IATA, from the derived routes artifact, else from the community catalog. Null when unknown or the artifact is not loaded.",
@@ -1168,6 +1615,20 @@
                                   "null"
                                 ],
                                 "description": "Dominant type."
+                              },
+                              "times": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "Where dep/arr come from: observed (inferred from what flew), published (an airport's board), or both."
+                              },
+                              "flight": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "The marketed flight number when a board named it (e.g. LH996 for callsign DLH8AE)."
                               }
                             }
                           }
@@ -1556,6 +2017,96 @@
                         }
                       ]
                     },
+                    "today": {
+                      "description": "Today's board as the airport publishes it, in the airport's local day. Null when no published board is held for it.",
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "day": {
+                              "type": "string",
+                              "description": "YYYY-MM-DD, local."
+                            },
+                            "source": {
+                              "type": "string",
+                              "description": "published"
+                            },
+                            "departures": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "flight": {
+                                    "type": "string",
+                                    "description": "Marketed number."
+                                  },
+                                  "dst": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "dep": {
+                                    "type": "string",
+                                    "description": "HH:MM, local."
+                                  },
+                                  "callsign": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "description": "The observed service that carries the number, when known."
+                                  },
+                                  "type": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "arrivals": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "flight": {
+                                    "type": "string",
+                                    "description": "Marketed number."
+                                  },
+                                  "org": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "arr": {
+                                    "type": "string",
+                                    "description": "HH:MM, local."
+                                  },
+                                  "callsign": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "type": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "board": {
                       "type": "array",
                       "items": {
@@ -1715,6 +2266,28 @@
                         "dst": "LHR",
                         "flights": 14,
                         "days": 7
+                      }
+                    ]
+                  },
+                  "today": {
+                    "day": "2026-09-23",
+                    "source": "published",
+                    "departures": [
+                      {
+                        "flight": "SQ322",
+                        "dst": "LHR",
+                        "dep": "09:00",
+                        "callsign": "SIA322",
+                        "type": "A359"
+                      }
+                    ],
+                    "arrivals": [
+                      {
+                        "flight": "SQ317",
+                        "org": "LHR",
+                        "arr": "06:55",
+                        "callsign": "SIA317",
+                        "type": "A359"
                       }
                     ]
                   },
@@ -3341,6 +3914,120 @@
         "x-stability": "map"
       }
     },
+    "/v1/airlines/{icao}/airframes": {
+      "get": {
+        "tags": [
+          "Reference"
+        ],
+        "summary": "Airline aircraft",
+        "description": "The aircraft the network currently observes flying this airline's callsigns, from the airframe lifetime record: an airframe counts when its latest airline stint is this airline's and it was seen in the record's last 60 days. Per aircraft: hex, reg, type, country (address block), built_year (registry, else tar1090), msn, since (start of the stint; since_first_seen true when that is simply where the network's view of the airframe begins), last_seen, airlines (distinct airlines the record saw it fly for) and notable (public incident reports and squawks). Observation, not a published fleet list. Rate: 300 per 600 s (bucket `refdata`). Cache: 1 h edge.",
+        "operationId": "airline_airframes",
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Airline ICAO code.",
+              "title": "Icao"
+            },
+            "description": "Airline ICAO code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "icao": "TVS",
+                  "as_of": "2026-09-22",
+                  "current_days": 60,
+                  "airframes": [
+                    {
+                      "hex": "49d283",
+                      "reg": "OK-TVY",
+                      "type": "B738",
+                      "country": "CZ",
+                      "since": "2026-05-08",
+                      "since_first_seen": false,
+                      "last_seen": "2026-09-21",
+                      "airlines": 3,
+                      "notable": 0
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Wait Retry-After seconds. Headers: Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "detail": "slow down"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Machine code: not_found, not_observed, invalid_request, rate_limited, stale_snapshot, artifact_unavailable, upstream_unavailable."
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "Human-readable explanation."
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "detail"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-stability": "map"
+      }
+    },
     "/v1/airlines/{icao}/fleet": {
       "get": {
         "tags": [
@@ -4426,7 +5113,7 @@
           "Meta"
         ],
         "summary": "Index",
-        "description": "Name, docs, spec, source, terms, attribution, and the feed address.",
+        "description": "Name, docs, spec, source, terms, attribution, credits, and the feed address.",
         "operationId": "index",
         "responses": {
           "200": {
@@ -4459,7 +5146,11 @@
                     },
                     "attribution": {
                       "type": "string",
-                      "description": "The ODbL credit line."
+                      "description": "The short credit line; the credits page holds each source's own credit."
+                    },
+                    "credits": {
+                      "type": "string",
+                      "description": "Every source the data draws on, with its licence and credit."
                     },
                     "feed": {
                       "type": "string",
@@ -4473,6 +5164,7 @@
                     "openapi",
                     "terms",
                     "attribution",
+                    "credits",
                     "feed"
                   ]
                 },
@@ -4483,7 +5175,8 @@
                   "swagger": "/docs",
                   "source": "https://github.com/flightportrait/network",
                   "terms": "https://flightportrait.com/network/terms",
-                  "attribution": "Data (c) FlightPortrait network feeders, ODbL 1.0",
+                  "attribution": "Data (c) FlightPortrait network feeders and credited sources, ODbL 1.0",
+                  "credits": "https://flightportrait.com/network/credits.html",
                   "feed": "feed.flightportrait.com:30004 (beast_reduce_plus_out)"
                 }
               }

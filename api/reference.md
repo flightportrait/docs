@@ -21,10 +21,10 @@ curl https://data.flightportrait.com/v1/now
 ## The rules of the road
 
 * A live snapshot older than 60 seconds returns 503, never an empty sky. A missing history artifact returns 503 too, never a 404 that would claim the aircraft was not seen.
-* Every error is `{"error": "<code>", "detail": "<text>"}`. The codes: `not_found`, `not_observed`, `invalid_request`, `rate_limited`, `stale_snapshot`, `artifact_unavailable`.
+* Every error is `{"error": "<code>", "detail": "<text>"}`. The codes: `not_found`, `not_observed`, `invalid_request`, `rate_limited`, `stale_snapshot`, `artifact_unavailable`, `unavailable`, `method_not_allowed`, `internal_error`.
 * Operations marked `stable` in the spec only ever gain fields. Operations marked `map` exist for [the map](https://flightportrait.com/network) and can change with it.
 * `/v1/aircraft` and `/v2/point` speak readsb's wire dialect (`hex`, `t`, `r`, `gs`). Everything else uses full words (`reg`, `type`, `org`, `dst`).
-* Everything is observation. Gaps mean the network's sources did not hear it, nothing more.
+* Everything is observation, with one marked exception: `/v1/estimated` serves positions placed by the estimator, each with `"estimated": true` and its last observed position, and never mixes them into `/v1/aircraft` or history. Gaps mean the network's sources did not hear it, nothing more.
 
 ## A polite client
 
