@@ -22,7 +22,8 @@ the map, and on the wall, are what those receivers heard.
 | Build a frame from parts | [Build your own frame](/diy/byod) |
 | The live map | [The network](/network/overview) |
 | Run a Station | [Feed the network](/network/feed) |
-| Use the flight data | [The public API](/api/reference) |
+| Use the flight data | [API quickstart](/build/api) |
+| Build something with it | [Build](/build/overview) |
 
 ## Repositories
 

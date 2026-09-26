@@ -32,12 +32,21 @@
         ]
       },
       {
-        "group": "Yours to run",
+        "group": "Build",
         "pages": [
-          "diy/overview",
-          "diy/firmware",
-          "diy/byos",
-          "diy/byod"
+          "build/overview",
+          "build/api",
+          "build/flight-display",
+          {
+            "group": "Bring your own device",
+            "pages": [
+              "diy/overview",
+              "diy/firmware",
+              "diy/byos",
+              "diy/byod"
+            ]
+          },
+          "build/share"
         ]
       },
       {
