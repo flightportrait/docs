@@ -39,3 +39,8 @@ server ships with the tooling to serve a static image; from there it
 is your renderer against the same panel format we use, specified byte
 by byte in
 [PROTOCOL.md](https://github.com/flightportrait/frame/blob/main/docs/PROTOCOL.md).
+The [free flight data](/build/api) is one thing to draw from. Our own
+poster drawings are licensed, not open; a key for builders is coming
+([where that stands](/build/overview#the-art)).
+
+Built one? [Share your build](/build/share).

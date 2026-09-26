@@ -28,5 +28,7 @@ the same open firmware. [Build your own frame](/diy/byod).
 ## The license
 
 Firmware is Apache-2.0. The network map is Apache-2.0. Data from
-the network API is ODbL. The poster art stays ours. Everything the
-frame needs to exist without us is public.
+the network API is ODbL. The poster art stays ours; a licensed key
+for it is coming, and [Build](/build/overview#the-art) says where
+that stands. Everything the frame needs to exist without us is
+public.

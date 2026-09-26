@@ -44,5 +44,7 @@ render to 960,000 bytes.
 
 Our renderer stays on our server: the daily poster of your sky is
 what you buy when you buy a frame. A frame on your own server
-displays whatever you draw for it instead. The hardware, the battery
-life, and the privacy properties are identical either way.
+displays whatever you draw for it instead, and the
+[free flight data](/build/api) is there if you want to draw the sky
+yourself. The hardware, the battery life, and the privacy
+properties are identical either way.
