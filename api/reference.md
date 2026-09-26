@@ -18,6 +18,8 @@ curl https://data.flightportrait.com/v1/now
  "station_count": 1, "generated_at": 1787924061.0}
 ```
 
+New here: [API quickstart](/build/api), three calls in four languages.
+
 ## The rules of the road
 
 * A live snapshot older than 60 seconds returns 503, never an empty sky. A missing history artifact returns 503 too, never a 404 that would claim the aircraft was not seen.
