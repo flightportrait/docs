@@ -49,6 +49,8 @@ The station key is shown once at setup. Keep it: it is the station's
 identity and the key to its status page. We store a hash, not the key.
 [The join page](https://flightportrait.com/network/?mode=join) watches
 until the station is heard.
+[Am I feeding](https://flightportrait.com/network/feeding) checks a
+station from the network it feeds from, without the key.
 
 ## Already running a receiver
 

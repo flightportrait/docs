@@ -14,8 +14,8 @@ curl https://data.flightportrait.com/v1/now
 ```
 
 ```json
-{"aircraft_count": 7, "aircraft_with_pos": 5,
- "station_count": 1, "generated_at": 1787924061.0}
+{"aircraft_count": 508, "aircraft_with_pos": 467,
+ "station_count": 18, "generated_at": 1791528683.0}
 ```
 
 New here: [API quickstart](/build/api), three calls in four languages.
